@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Bell, Briefcase, BookOpen, Lock, MapPin, Phone, Building2, Tag, ExternalLink, Loader2 } from 'lucide-react';
 import BottomNav from '../components/BottomNav';
 
-const API_BASE = 'http://localhost:8000/api';
+const API_BASE = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : "http://localhost:8000/api";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 interface Job {
@@ -329,7 +329,7 @@ export default function Home() {
                 // Clear chat history from DynamoDB if user is logged in
                 if (userId) {
                   try {
-                    await fetch(`http://localhost:8000/api/users/${userId}/chat-history`, {
+                    await fetch(`${API_BASE}/users/${userId}/chat-history`, {
                       method: 'DELETE'
                     });
                     console.log("[INFO] Cleared chat history from DynamoDB");
