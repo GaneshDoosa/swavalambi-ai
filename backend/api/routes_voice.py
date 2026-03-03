@@ -7,7 +7,10 @@ from typing import Optional
 from pydantic import BaseModel
 from services.voice_service import get_voice_service
 from agents.profiling_agent import ProfilingAgent
+import logging
 import os
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -67,12 +70,12 @@ async def transcribe_audio(
             audio_format=audio_format
         )
         
-        print(f"[INFO] Transcribed audio for user {user_id}: {result['text'][:50]}...")
+        logger.info("Transcribed audio for user %s: %s...", user_id, result['text'][:50])
         
         return result
         
     except Exception as e:
-        print(f"[ERROR] Transcription failed: {e}")
+        logger.error("Transcription failed: %s", e)
         raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
 
 
@@ -91,12 +94,12 @@ async def synthesize_speech(request: SynthesizeRequest):
             voice_id=request.voice_id
         )
         
-        print(f"[INFO] Synthesized speech: {request.text[:50]}...")
+        logger.info("Synthesized speech: %s...", request.text[:50])
         
         return result
         
     except Exception as e:
-        print(f"[ERROR] Synthesis failed: {e}")
+        logger.error("Synthesis failed: %s", e)
         raise HTTPException(status_code=500, detail=f"Synthesis failed: {str(e)}")
 
 
@@ -113,12 +116,12 @@ async def translate_text(request: TranslateRequest):
             target_lang=request.target_lang
         )
         
-        print(f"[INFO] Translated: {request.source_lang} -> {request.target_lang}")
+        logger.info("Translated: %s -> %s", request.source_lang, request.target_lang)
         
         return result
         
     except Exception as e:
-        print(f"[ERROR] Translation failed: {e}")
+        logger.error("Translation failed: %s", e)
         raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}")
 
 
@@ -154,7 +157,7 @@ async def voice_chat(
         )
         
         user_text = transcription["text"]
-        print(f"[INFO] User said: {user_text}")
+        logger.info("User said: %s", user_text)
         
         # Step 2: Translate to English if needed
         enable_translation = os.getenv("VOICE_ENABLE_TRANSLATION", "true").lower() == "true"
@@ -165,7 +168,7 @@ async def voice_chat(
                 target_lang="en"
             )
             english_text = translation["translated_text"]
-            print(f"[INFO] Translated to English: {english_text}")
+            logger.info("Translated to English: %s", english_text)
         else:
             english_text = user_text
         
@@ -187,9 +190,9 @@ async def voice_chat(
                                 "content": [{"text": msg["content"]}]
                             })
                         _agent_sessions[session_id].agent.messages = restored_messages
-                        print(f"[INFO] Restored {len(chat_history)} messages from DynamoDB for voice chat {user_id}")
+                        logger.info("Restored %d messages from DynamoDB for voice chat %s", len(chat_history), user_id)
                 except Exception as e:
-                    print(f"[WARN] Failed to restore chat history for voice: {e}")
+                    logger.warning("Failed to restore chat history for voice: %s", e)
                     
         agent = _agent_sessions[session_id]
         result = agent.run(english_text)
@@ -246,11 +249,11 @@ async def voice_chat(
                             
                     if serialized_chat:
                         update_chat_history(user_id, serialized_chat)
-                        print(f"[INFO] Saved {len(serialized_chat)} messages to DynamoDB for voice chat {user_id}")
+                        logger.info("Saved %d messages to DynamoDB for voice chat %s", len(serialized_chat), user_id)
             except Exception as e:
-                print(f"[WARN] Failed to persist voice chat history to DynamoDB: {e}")
+                logger.warning("Failed to persist voice chat history to DynamoDB: %s", e)
                 
-        print(f"[INFO] Agent response: {response_text[:50]}...")
+        logger.info("Agent response: %s...", response_text[:50])
         
         # Step 4: Translate response back to user's language
         if enable_translation and not language.startswith("en"):
@@ -260,7 +263,7 @@ async def voice_chat(
                 target_lang=language.split("-")[0]
             )
             localized_response = translation["translated_text"]
-            print(f"[INFO] Translated response: {localized_response[:50]}...")
+            logger.info("Translated response: %s...", localized_response[:50])
         else:
             localized_response = response_text
         
@@ -286,7 +289,7 @@ async def voice_chat(
         }
         
     except Exception as e:
-        print(f"[ERROR] Voice chat failed: {e}")
+        logger.error("Voice chat failed: %s", e)
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Voice chat failed: {str(e)}")

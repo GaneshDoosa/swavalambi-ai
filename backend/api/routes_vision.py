@@ -75,7 +75,13 @@ async def analyze_vision(
                 ContentType=mime_type
             )
             
-            s3_url = f"https://{bucket_name}.s3.amazonaws.com/{file_key}"
+            # Generate a presigned URL valid for 7 days
+            # The key is also stored in DynamoDB so it can be refreshed
+            s3_url = s3_client.generate_presigned_url(
+                "get_object",
+                Params={"Bucket": bucket_name, "Key": file_key},
+                ExpiresIn=604800  # 7 days, regenerated each time from the stored key
+            )
             
             # Update chat history with photo upload and AI response
             user_record = get_user(user_id)
@@ -85,7 +91,9 @@ async def analyze_vision(
                 chat_history.append({
                     "role": "user",
                     "content": "Uploaded work sample",
-                    "imagePreviewUrl": s3_url
+                    "imagePreviewUrl": s3_url,
+                    "s3Key": file_key,        # stored to regenerate presigned URL after expiry
+                    "s3Bucket": bucket_name
                 })
                 chat_history.append({
                     "role": "assistant",

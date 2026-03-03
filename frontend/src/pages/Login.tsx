@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { ArrowLeft, Phone, Mail, Lock } from "lucide-react";
+import heroBanner from "../assets/herobanner.png";
 
 const API_BASE = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : "http://localhost:8000/api";
 
@@ -127,35 +128,24 @@ export default function Login() {
         </h2>
       </div>
 
-      {/* Hero gradient banner */}
-      <div
-        className="mx-4 mt-2 rounded-2xl overflow-hidden"
-        style={{
-          background:
-            "linear-gradient(135deg, #ff8c00 0%, #ffb347 60%, #ffe0b2 100%)",
-        }}
-      >
-        <div className="p-6">
-          <p className="text-white font-extrabold text-2xl leading-tight">
-            Welcome to
-            <br />
-            Swavalambi
-          </p>
-          <p className="text-white/80 text-sm mt-2">
-            AI-powered jobs, loans & skill upgrades for skilled India
-          </p>
-        </div>
+      {/* Hero banner image */}
+      <div className="mx-4 mt-2 rounded-2xl overflow-hidden shadow-md">
+        <img
+          src={heroBanner}
+          alt="Swavalambi workspace"
+          className="w-full h-48 object-cover object-center"
+        />
       </div>
 
       {/* Form */}
       <div className="px-6 pt-6 pb-2">
         <h2 className="text-slate-900 tracking-tight text-[28px] font-bold leading-tight text-center">
-          {otpSent ? "Enter OTP" : "Sign In"}
+          {otpSent ? "Enter OTP" : "Welcome Back"}
         </h2>
         <p className="text-slate-600 text-base text-center mt-2">
           {otpSent
             ? `Code sent to ${identifier}`
-            : "Use your phone number or email to sign in"}
+            : "Log in to continue your journey"}
         </p>
       </div>
 
@@ -238,7 +228,7 @@ export default function Login() {
                 disabled={loading}
                 className="w-full bg-primary hover:bg-primary-dark text-white font-bold py-4 rounded-xl shadow-lg transition-all active:scale-[0.98] flex justify-center disabled:opacity-60"
               >
-                {loading ? (authMethod === "otp" ? "Sending…" : "Signing in…") : (authMethod === "otp" ? "Send OTP →" : "Sign In →")}
+                {loading ? (authMethod === "otp" ? "Sending…" : "Logging in…") : (authMethod === "otp" ? "Send OTP →" : "Login →")}
               </button>
 
               <button

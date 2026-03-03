@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Bell, Briefcase, BookOpen, Lock, MapPin, Phone, Building2, Tag, ExternalLink, Loader2 } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Bell, Briefcase, BookOpen, Lock, MapPin, Phone, Building2, Tag, ExternalLink, Loader2, LogOut } from 'lucide-react';
 import BottomNav from '../components/BottomNav';
 
 const API_BASE = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : "http://localhost:8000/api";
@@ -189,6 +189,7 @@ const LoadingSkeleton = () => (
 
 // ── Main Page ────────────────────────────────────────────────────────────────
 export default function Home() {
+  const navigate = useNavigate();
   const [skillRating, setSkillRating] = useState(0);
   const [intent, setIntent] = useState('job');
   const [skill, setSkill] = useState('');
@@ -198,6 +199,18 @@ export default function Home() {
   const [recs, setRecs] = useState<Recommendations | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const handleLogout = () => {
+    // Clear all app data from storage
+    const keys = [
+      'swavalambi_user_id', 'swavalambi_name', 'swavalambi_skill_rating',
+      'swavalambi_intent', 'swavalambi_skill', 'swavalambi_gender',
+      'swavalambi_location',
+    ];
+    keys.forEach(k => localStorage.removeItem(k));
+    sessionStorage.clear();
+    navigate('/login', { replace: true });
+  };
 
   const isLocked = skillRating < 3;
 
@@ -298,11 +311,18 @@ export default function Home() {
               </p>
             </div>
           </div>
-          <div className="relative">
+          <div className="flex flex-col items-center gap-2">
             <div className="w-16 h-16 bg-gradient-to-br from-primary to-primary-dark rounded-2xl flex flex-col items-center justify-center border-2 border-primary/20 shadow-lg">
               <span className="text-white font-bold text-lg">{skillRating}</span>
               <span className="text-white/80 text-[10px] font-medium">Level</span>
             </div>
+            <button
+              onClick={handleLogout}
+              title="Logout"
+              className="flex items-center gap-1 text-xs font-semibold text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 px-2.5 py-1 rounded-lg border border-red-200 transition-colors"
+            >
+              <LogOut size={12} /> Logout
+            </button>
           </div>
         </div>
         

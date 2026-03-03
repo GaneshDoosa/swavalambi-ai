@@ -4,6 +4,13 @@ from mangum import Mangum
 from dotenv import load_dotenv
 import os
 import json
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
 # Load environment variables from .env file — override=True ensures
 # .env always wins over shell-level env vars (e.g. AWS_DEFAULT_REGION)

@@ -9,3 +9,5 @@ python-jose[cryptography]
 pyjwt[crypto]
 anthropic
 openai>=1.0.0
+boto3
+botocore
