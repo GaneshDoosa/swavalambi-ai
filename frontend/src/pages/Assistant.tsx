@@ -117,14 +117,26 @@ function extractOptions(text: string): string[] {
   return [];
 }
 
-
-const API_BASE = "http://localhost:8000/api";
+const API_BASE = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : "http://localhost:8000/api";
 
 // Generate a stable session_id for this browser session
+// Fallback for browsers that don't support crypto.randomUUID (older browsers or HTTP context)
+const generateUUID = () => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  // Fallback: simple random ID
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+};
+
 const getSessionId = () => {
   let id = sessionStorage.getItem("swavalambi_session_id");
   if (!id) {
-    id = crypto.randomUUID();
+    id = generateUUID();
     sessionStorage.setItem("swavalambi_session_id", id);
   }
   return id;
@@ -134,7 +146,7 @@ const getSessionId = () => {
 const clearSession = () => {
   sessionStorage.removeItem("swavalambi_session_id");
   // Generate new session ID
-  const newId = crypto.randomUUID();
+  const newId = generateUUID();
   sessionStorage.setItem("swavalambi_session_id", newId);
   return newId;
 };

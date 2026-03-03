@@ -2,10 +2,34 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from mangum import Mangum
 from dotenv import load_dotenv
+import os
+import json
 
 # Load environment variables from .env file — override=True ensures
 # .env always wins over shell-level env vars (e.g. AWS_DEFAULT_REGION)
 load_dotenv(override=True)
+
+# If running in Lambda with Secrets Manager, load credentials into env vars
+# so agents can access them via os.getenv() as usual
+def _load_secrets_to_env():
+    secret_name = os.getenv("AI_SECRETS_NAME")
+    use_local = os.getenv("USE_LOCAL_CREDENTIALS", "true").lower() == "true"
+    if use_local or not secret_name:
+        return
+    try:
+        import boto3
+        client = boto3.client("secretsmanager", region_name=os.getenv("AWS_REGION", "us-east-1"))
+        secret = client.get_secret_value(SecretId=secret_name)
+        creds = json.loads(secret["SecretString"])
+        # Populate env vars so agents can use them transparently
+        if "anthropic" in creds and "api_key" in creds["anthropic"]:
+            os.environ["ANTHROPIC_API_KEY"] = creds["anthropic"]["api_key"]
+        if "openai" in creds and "api_key" in creds["openai"]:
+            os.environ["OPENAI_API_KEY"] = creds["openai"]["api_key"]
+    except Exception as e:
+        print(f"[WARN] Failed to load secrets from Secrets Manager: {e}")
+
+_load_secrets_to_env()
 
 from api.routes_auth import router as auth_router
 from api.routes_chat import router as chat_router
