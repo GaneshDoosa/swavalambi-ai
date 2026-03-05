@@ -59,7 +59,7 @@ class JobsAgent(BaseAgent):
             # Add job application URL
             job_id = job.get('id', '')
             if job_id:
-                job['apply_url'] = f"https://www.ncs.gov.in/job-details/{job_id}"
+                job['apply_url'] = f"https://betacloud.ncs.gov.in/job-listing/applying/{job_id}"
             else:
                 job['apply_url'] = ""
         
