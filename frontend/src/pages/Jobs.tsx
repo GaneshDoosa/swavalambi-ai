@@ -31,6 +31,13 @@ export default function Jobs() {
 
     const fetchLiveJobs = async () => {
       try {
+        // Check if user has completed assessment
+        if (!skill || skill.trim() === "") {
+          setError("Please complete your skill assessment first to see personalized job recommendations.");
+          setLoading(false);
+          return;
+        }
+
         const sessionId = sessionStorage.getItem('swavalambi_session_id') || 'demo-session';
         const ratingStr = localStorage.getItem('swavalambi_skill_rating') || '3';
         const rating = parseInt(ratingStr, 10);
@@ -85,8 +92,17 @@ export default function Jobs() {
             <p className="text-slate-500 font-medium">Finding live job openings...</p>
           </div>
         ) : error ? (
-          <div className="bg-red-50 border border-red-200 text-red-700 text-sm p-4 rounded-xl text-center">
-            {error}
+          <div className="text-center py-12">
+            <Briefcase className="mx-auto text-slate-300 mb-4" size={48} />
+            <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm p-4 rounded-xl mb-4">
+              {error}
+            </div>
+            <Link
+              to="/assistant"
+              className="inline-block mt-4 px-6 py-2 bg-primary text-white rounded-lg font-medium"
+            >
+              Start Assessment
+            </Link>
           </div>
         ) : jobs.length === 0 ? (
           <div className="text-center py-12">

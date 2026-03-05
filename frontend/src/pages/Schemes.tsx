@@ -33,13 +33,20 @@ export default function Schemes() {
 
   useEffect(() => {
     const ratingStr = localStorage.getItem('swavalambi_skill_rating');
-    const skillStr  = localStorage.getItem('swavalambi_skill') || 'artisan';
+    const skillStr  = localStorage.getItem('swavalambi_skill') || '';
     const intentStr = localStorage.getItem('swavalambi_intent') || 'loan';
     const sessionId = sessionStorage.getItem('swavalambi_session_id') || 'anon';
 
     const rating = ratingStr ? parseInt(ratingStr, 10) : 0;
     setIsLocked(rating < 3);
-    setSkill(skillStr);
+    setSkill(skillStr || 'artisan');
+
+    // Check if user has completed assessment
+    if (!skillStr || skillStr.trim() === "") {
+      setError("Please complete your skill assessment first to see personalized scheme recommendations.");
+      setLoading(false);
+      return;
+    }
 
     setLoading(true);
     fetch(`${API_BASE}/recommendations/fetch`, {
@@ -115,8 +122,16 @@ export default function Schemes() {
 
         {/* Error state */}
         {!loading && error && (
-          <div className="mx-4 mt-4 bg-red-50 border border-red-200 text-red-700 text-sm p-4 rounded-xl">
-            {error}
+          <div className="mx-4 mt-4 text-center">
+            <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm p-4 rounded-xl mb-4">
+              {error}
+            </div>
+            <Link
+              to="/assistant"
+              className="inline-block px-6 py-2 bg-primary text-white rounded-lg font-medium"
+            >
+              Start Assessment
+            </Link>
           </div>
         )}
 
