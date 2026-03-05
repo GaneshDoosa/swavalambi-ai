@@ -18,6 +18,9 @@ import asyncio
 
 from agents.strands_orchestrator import orchestrate_recommendations
 from services.dynamodb_service import get_user
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
