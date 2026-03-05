@@ -31,7 +31,15 @@ export default function Profile() {
   const [profilePicture, setProfilePicture] = useState<string | null>(null);
   const [showReassessmentWarning, setShowReassessmentWarning] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const accountSettingsRef = useRef<HTMLDivElement>(null);
   const { uploadProfilePicture, isUploading } = useProfilePictureUpload();
+
+  const scrollToSettings = () => {
+    accountSettingsRef.current?.scrollIntoView({ 
+      behavior: 'smooth', 
+      block: 'start' 
+    });
+  };
 
   const handleLogout = () => {
     // Clear all user data
@@ -188,7 +196,11 @@ export default function Profile() {
         </Link>
         <h2 className="text-lg font-bold leading-tight flex-1 text-center">Profile</h2>
         <div className="flex w-10 items-center justify-end">
-          <button className="flex items-center justify-center text-slate-900 hover:bg-slate-200 rounded-full p-2 transition-colors">
+          <button 
+            onClick={scrollToSettings}
+            className="flex items-center justify-center text-slate-900 hover:bg-slate-200 rounded-full p-2 transition-colors"
+            title="Account Settings"
+          >
             <Settings size={24} />
           </button>
         </div>
@@ -333,7 +345,7 @@ export default function Profile() {
         </section>
 
         {/* Account Settings */}
-        <section className="mt-8 px-4 flex flex-col gap-2">
+        <section ref={accountSettingsRef} className="mt-8 px-4 flex flex-col gap-2 scroll-mt-20">
           <h3 className="text-lg font-bold mb-2">Account Settings</h3>
           <button className="flex items-center gap-4 p-4 bg-white rounded-xl border border-slate-100 hover:bg-slate-50 transition-colors shadow-sm text-left w-full">
             <div className="size-10 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0">

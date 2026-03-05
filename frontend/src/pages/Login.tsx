@@ -1,7 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { ArrowLeft, Mail, Lock, Eye, EyeOff } from "lucide-react";
 import heroBanner from "../assets/herobanner.png";
+import carpentry from "../assets/carpentry.png";
+import plumbing from "../assets/plumbing.png";
+import tailor from "../assets/tailor.png";
 
 const API_BASE = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : "http://localhost:8000/api";
 
@@ -11,7 +14,29 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [currentIndex, setCurrentIndex] = useState(0);
   const navigate = useNavigate();
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const images = [heroBanner, carpentry, plumbing, tailor];
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentIndex((prev) => (prev + 1) % images.length);
+    }, 3000); // Auto-swipe every 3 seconds
+
+    return () => clearInterval(interval);
+  }, [images.length]);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      const scrollWidth = scrollRef.current.scrollWidth / images.length;
+      scrollRef.current.scrollTo({
+        left: scrollWidth * currentIndex,
+        behavior: 'smooth'
+      });
+    }
+  }, [currentIndex, images.length]);
 
   const handlePasswordLogin = async () => {
     if (!identifier.trim() || !password.trim()) {
@@ -58,14 +83,36 @@ export default function Login() {
         </h2>
       </div>
 
-      {/* Hero Banner */}
+      {/* Hero Banner Carousel */}
       <div className="px-4 py-3">
         <div 
-          className="w-full bg-center bg-no-repeat bg-cover flex flex-col justify-end overflow-hidden rounded-xl min-h-[240px] shadow-sm"
-          style={{
-            backgroundImage: `url(${heroBanner})`
-          }}
-        />
+          ref={scrollRef}
+          className="w-full overflow-x-auto overflow-y-hidden rounded-xl shadow-sm snap-x snap-mandatory hide-scrollbar"
+        >
+          <div className="flex min-h-[240px]">
+            {images.map((img, idx) => (
+              <div
+                key={idx}
+                className="flex-shrink-0 w-full bg-center bg-no-repeat bg-cover rounded-xl snap-center"
+                style={{
+                  backgroundImage: `url(${img})`,
+                  minHeight: '240px'
+                }}
+              />
+            ))}
+          </div>
+        </div>
+        {/* Dots indicator */}
+        <div className="flex justify-center gap-2 mt-3">
+          {images.map((_, idx) => (
+            <div
+              key={idx}
+              className={`h-2 rounded-full transition-all ${
+                idx === currentIndex ? 'w-6 bg-primary' : 'w-2 bg-slate-300'
+              }`}
+            />
+          ))}
+        </div>
       </div>
 
       {/* Welcome Text */}
