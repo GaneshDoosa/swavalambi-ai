@@ -94,45 +94,70 @@ def save_profile_assessment(
 ) -> None:
     """
     Save the complete profile assessment data from the profiling agent.
-    Stores the structured assessment separately from chat history.
+    Stores the structured assessment in DynamoDB with flexible schema.
     
     Args:
         user_id: User's phone number
-        profile_data: Dictionary containing:
-            - profession_skill: str
-            - intent: str (job/upskill/loan)
-            - theory_score: int (1-5)
-            - years_experience: int
-            - work_type: str
-            - has_training: bool
-            - gender: str
-            - preferred_location: str
+        profile_data: Dictionary containing any key-value pairs extracted by the agent
+                     (flexible schema to support dynamic questions)
     """
+    logger.info(f"[SAVE_PROFILE] Starting save for user {user_id}")
+    logger.info(f"[SAVE_PROFILE] Profile data keys: {list(profile_data.keys())}")
+    logger.info(f"[SAVE_PROFILE] Profile data: {profile_data}")
+    
     table = _get_table()
     now = datetime.now(timezone.utc).isoformat()
+    
+    # Add metadata to profile data
+    profile_data_with_meta = {
+        **profile_data,
+        "assessment_timestamp": now,
+        "assessment_version": "1.0"
+    }
 
+    # Update DynamoDB with complete profile data and key fields for quick access
+    update_expr_parts = ["profile_assessment = :profile", "updated_at = :now"]
+    expr_values = {
+        ":profile": profile_data_with_meta,
+        ":now": now,
+    }
+    
+    # Dynamically add common fields if present (for backward compatibility and quick queries)
+    if "profession_skill" in profile_data:
+        update_expr_parts.append("skill = :skill")
+        expr_values[":skill"] = profile_data["profession_skill"]
+        logger.info(f"[SAVE_PROFILE] Setting skill = {profile_data['profession_skill']}")
+    
+    if "intent" in profile_data:
+        update_expr_parts.append("intent = :intent")
+        expr_values[":intent"] = profile_data["intent"]
+        logger.info(f"[SAVE_PROFILE] Setting intent = {profile_data['intent']}")
+    
+    if "theory_score" in profile_data:
+        update_expr_parts.append("theory_score = :theory")
+        expr_values[":theory"] = profile_data["theory_score"]
+        logger.info(f"[SAVE_PROFILE] Setting theory_score = {profile_data['theory_score']}")
+    
+    if "gender" in profile_data:
+        update_expr_parts.append("gender = :gender")
+        expr_values[":gender"] = profile_data["gender"]
+        logger.info(f"[SAVE_PROFILE] Setting gender = {profile_data['gender']}")
+    
+    if "preferred_location" in profile_data:
+        update_expr_parts.append("preferred_location = :location")
+        expr_values[":location"] = profile_data["preferred_location"]
+        logger.info(f"[SAVE_PROFILE] Setting preferred_location = {profile_data['preferred_location']}")
+
+    update_expression = "SET " + ", ".join(update_expr_parts)
+    logger.info(f"[SAVE_PROFILE] Update expression: {update_expression}")
+    logger.info(f"[SAVE_PROFILE] Expression values: {expr_values}")
+    
     table.update_item(
         Key={"user_id": user_id},
-        UpdateExpression=(
-            "SET profile_assessment = :profile, "
-            "skill = :skill, "
-            "intent = :intent, "
-            "theory_score = :theory, "
-            "gender = :gender, "
-            "preferred_location = :location, "
-            "updated_at = :now"
-        ),
-        ExpressionAttributeValues={
-            ":profile": profile_data,
-            ":skill": profile_data.get("profession_skill", ""),
-            ":intent": profile_data.get("intent", "job"),
-            ":theory": profile_data.get("theory_score", 0),
-            ":gender": profile_data.get("gender", ""),
-            ":location": profile_data.get("preferred_location", ""),
-            ":now": now,
-        }
+        UpdateExpression=update_expression,
+        ExpressionAttributeValues=expr_values
     )
-    logger.info(f"Saved profile assessment for {user_id}: {profile_data.get('profession_skill')}, theory={profile_data.get('theory_score')}")
+    logger.info(f"[SAVE_PROFILE] Successfully saved profile assessment for {user_id}: {profile_data.get('profession_skill', 'N/A')}, theory={profile_data.get('theory_score', 'N/A')}")
 
 
 def get_user(user_id: str) -> Optional[dict]:

@@ -94,7 +94,7 @@ class ProfilingAgent:
            
         5. **Conclude / Photo Prompt**:
            - For **beginners**: Encourage them warmly. Tell them we'll help them learn and grow. DO NOT ask for a photo.
-           - For **intermediate/advanced**: Appreciate their experience. Ask if they can upload a clear photo of their recent work to showcase their skills.
+           - For **intermediate/advanced**: Appreciate their experience. Then output the JSON profile FIRST, followed by asking for photo upload.
            
         CONVERSATION STYLE:
         - Keep responses short (1-2 sentences per turn)
@@ -115,8 +115,10 @@ class ProfilingAgent:
         
         ALWAYS use **bold text** (double asterisks) around each option to make them clickable in the UI.
         
-        When you have gathered ALL information and reached the end, output ONLY this JSON (nothing else):
+        CRITICAL - PROFILE OUTPUT RULES:
+        When you have gathered ALL information, you MUST output the JSON profile in this EXACT format:
         
+        PROFILE_DATA_START
         {{
             "profession_skill": "tailor",
             "intent": "job",
@@ -128,6 +130,11 @@ class ProfilingAgent:
             "gender": "female",
             "preferred_location": "Mumbai"
         }}
+        PROFILE_DATA_END
+        
+        After outputting the JSON:
+        - If is_ready_for_photo is true: Add a message asking them to upload a photo
+        - If is_ready_for_photo is false: Add a warm closing message
         
         SCORING RULES:
         - theory_score: 1-2 (beginner), 3-4 (intermediate), 5 (advanced)
@@ -192,23 +199,39 @@ class ProfilingAgent:
         if not response_text:
             raise Exception("No response generated from any model")
 
-        # Check if the LLM outputted the final JSON profile
-        if "{" in response_text and "}" in response_text and "is_ready_for_photo" in response_text:
+        # Check if the LLM outputted the final JSON profile with markers
+        if "PROFILE_DATA_START" in response_text and "PROFILE_DATA_END" in response_text:
             try:
-                json_str = response_text[response_text.find("{"):response_text.rfind("}")+1]
+                print(f"[INFO] Found profile data markers in response")
+                # Extract JSON between markers
+                start_marker = "PROFILE_DATA_START"
+                end_marker = "PROFILE_DATA_END"
+                start_idx = response_text.find(start_marker) + len(start_marker)
+                end_idx = response_text.find(end_marker)
+                json_str = response_text[start_idx:end_idx].strip()
+                
+                print(f"[INFO] Extracted JSON string: {json_str}")
                 profile = json.loads(json_str)
+                print(f"[INFO] Parsed profile data: {profile}")
                 
                 is_ready = profile.get("is_ready_for_photo", False)
                 
-                # Don't show the JSON to the user - provide a clean message instead
-                final_response = "Thank you! Please upload your work sample now using the button below." 
-                if not is_ready:
+                # Extract any message after the JSON markers (photo request or closing)
+                message_after_json = response_text[end_idx + len(end_marker):].strip()
+                
+                # Use the message from LLM if present, otherwise use default
+                if message_after_json:
+                    final_response = message_after_json
+                elif is_ready:
+                    final_response = "Thank you! Please upload your work sample now using the button below." 
+                else:
                     final_response = "Thank you! Your profile information has been successfully saved. We look forward to helping you grow!"
-                    
+                
+                print(f"[INFO] Returning profile_data with {len(profile)} fields")
                 return {
-                    "response": final_response,  # Clean message, not JSON
+                    "response": final_response,
                     "is_ready_for_photo": is_ready,
-                    "is_complete": not is_ready, # If not ready for photo (e.g. beginner), we just mark it complete
+                    "is_complete": not is_ready,
                     "intent_extracted": profile.get("intent"),
                     "profession_skill_extracted": profile.get("profession_skill"),
                     "theory_score_extracted": profile.get("theory_score"),
@@ -217,7 +240,11 @@ class ProfilingAgent:
                     "profile_data": profile,  # Pass the complete profile for storage
                 }
             except Exception as e:
-                print(f"Failed to parse profile JSON: {e}")
+                print(f"[ERROR] Failed to parse profile JSON: {e}")
+                import traceback
+                traceback.print_exc()
+        else:
+            print(f"[DEBUG] No profile markers found in response. Response preview: {response_text[:200]}")
 
         # Normal conversational turn
         return {
