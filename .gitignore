@@ -106,4 +106,13 @@ SKILL_LIMITATION_UPDATE.md
 SKILL_SPECIFIC_PROFILING_QUESTIONS.md
 WORK_SAMPLE_ASSESSMENT.md
 profiling_agent_v2.py
-profiling_agent_backup.py
+profiling_agent_backup.pybackend/PIL/
+backend/Pillow*
+backend/*.dist-info/
+backend/.libs/
+backend/psycopg2/
+backend/psycopg2_binary*
+backend/pgvector/
+backend/numpy/
+backend/numpy*
+nohup.out

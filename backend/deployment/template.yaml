@@ -11,12 +11,19 @@ Globals:
     MemorySize: 512
     Environment:
       Variables:
-        # Override BEDROCK_MODEL_ID in specific environments if needed
-        BEDROCK_MODEL_ID: "us.amazon.nova-pro-v1:0"
-        # Anthropic Configuration Flags
-        USE_ANTHROPIC: "false"
-        ANTHROPIC_API_KEY: ""
-        ANTHROPIC_MODEL_ID: "claude-3-5-sonnet-latest"
+        # AI Configuration
+        USE_ANTHROPIC: "true"
+        ANTHROPIC_MODEL_ID: "claude-sonnet-4-6"
+        AI_SECRETS_NAME: "swavalambi/ai-credentials"
+        USE_LOCAL_CREDENTIALS: "false"
+        # Vector Store Configuration
+        VECTOR_STORE: "pgvector"
+        EMBEDDING_PROVIDER: "azure-openai"
+        # DynamoDB
+        DYNAMODB_TABLE: "swavalambi_users"
+        # Cognito (will be overridden by specific values below)
+        COGNITO_USER_POOL_ID: ""
+        COGNITO_CLIENT_ID: ""
 
 Resources:
   SwavalambiApiFunction:
@@ -27,6 +34,11 @@ Resources:
       Runtime: python3.12
       Architectures:
         - x86_64
+      Environment:
+        Variables:
+          # Override Cognito values (update these with your actual values)
+          COGNITO_USER_POOL_ID: "us-east-1_bRKpUL77I"
+          COGNITO_CLIENT_ID: "2kfmnu9h7rq35jqn45q8jgfj5f"
       Policies:
         # Give Lambda permissions to access Bedrock (Profiling/Vision Agents)
         - Statement:
@@ -45,17 +57,45 @@ Resources:
                 - dynamodb:Scan
                 - dynamodb:Query
               Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/swavalambi_users"
+        # Give Lambda permissions to Secrets Manager
+        - Statement:
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+                - secretsmanager:DescribeSecret
+              Resource: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:swavalambi/ai-credentials-*"
       Events:
         ApiEvent:
           Type: HttpApi
           Properties:
             Path: /{proxy+}
             Method: ANY
+            ApiId: !Ref SwavalambiHttpApi
+
+  SwavalambiHttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowOrigins:
+          - "http://localhost:5173"
+          - "http://localhost:3000"
+          - "http://swavalambi-frontend-1772381208.s3-website-us-east-1.amazonaws.com"
+          - "https://d21tmg809bunv0.cloudfront.net"
+        AllowHeaders:
+          - "*"
+        AllowMethods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+          - OPTIONS
+        AllowCredentials: true
+        MaxAge: 3600
 
 Outputs:
   SwavalambiApi:
     Description: "API Gateway endpoint URL for Prod environment"
-    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/"
+    Value: !Sub "https://${SwavalambiHttpApi}.execute-api.${AWS::Region}.amazonaws.com/"
   SwavalambiApiFunction:
     Description: "Swavalambi Backend Lambda Function ARN"
     Value: !GetAtt SwavalambiApiFunction.Arn

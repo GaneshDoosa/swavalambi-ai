@@ -19,22 +19,56 @@ load_dotenv(override=True)
 # If running in Lambda with Secrets Manager, load credentials into env vars
 # so agents can access them via os.getenv() as usual
 def _load_secrets_to_env():
-    secret_name = os.getenv("AI_SECRETS_NAME")
-    use_local = os.getenv("USE_LOCAL_CREDENTIALS", "true").lower() == "true"
-    if use_local or not secret_name:
+    secret_name = os.getenv("AI_SECRETS_NAME", "swavalambi/ai-credentials")
+    use_local = os.getenv("USE_LOCAL_CREDENTIALS", "false").lower() == "true"
+    
+    # In Lambda, always try to load from Secrets Manager
+    if use_local:
+        logging.info("Using local credentials from .env")
         return
+    
     try:
         import boto3
         client = boto3.client("secretsmanager", region_name=os.getenv("AWS_REGION", "us-east-1"))
         secret = client.get_secret_value(SecretId=secret_name)
         creds = json.loads(secret["SecretString"])
+        
         # Populate env vars so agents can use them transparently
         if "anthropic" in creds and "api_key" in creds["anthropic"]:
             os.environ["ANTHROPIC_API_KEY"] = creds["anthropic"]["api_key"]
+            logging.info("Loaded Anthropic API key from Secrets Manager")
+        
+        if "sarvam" in creds and "api_key" in creds["sarvam"]:
+            os.environ["SARVAM_API_KEY"] = creds["sarvam"]["api_key"]
+            logging.info("Loaded Sarvam API key from Secrets Manager")
+        
         if "openai" in creds and "api_key" in creds["openai"]:
             os.environ["OPENAI_API_KEY"] = creds["openai"]["api_key"]
+            logging.info("Loaded OpenAI API key from Secrets Manager")
+        
+        # PostgreSQL credentials
+        if "postgres" in creds:
+            pg = creds["postgres"]
+            if "host" in pg:
+                os.environ["POSTGRES_HOST"] = pg["host"]
+            if "port" in pg:
+                os.environ["POSTGRES_PORT"] = str(pg["port"])
+            if "database" in pg:
+                os.environ["POSTGRES_DATABASE"] = pg["database"]
+            if "user" in pg:
+                os.environ["POSTGRES_USER"] = pg["user"]
+            if "password" in pg:
+                os.environ["POSTGRES_PASSWORD"] = pg["password"]
+            
+            # Build connection string
+            if all(k in pg for k in ["user", "password", "host", "port", "database"]):
+                conn_str = f"postgresql://{pg['user']}:{pg['password']}@{pg['host']}:{pg['port']}/{pg['database']}"
+                os.environ["POSTGRES_CONNECTION_STRING"] = conn_str
+                logging.info("Loaded PostgreSQL credentials from Secrets Manager")
+            
     except Exception as e:
-        print(f"[WARN] Failed to load secrets from Secrets Manager: {e}")
+        logging.error(f"Failed to load secrets from Secrets Manager: {e}")
+        raise
 
 _load_secrets_to_env()
 
@@ -56,7 +90,14 @@ app = FastAPI(
 # Enable CORS for frontend integration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Restrict in production
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:3000",
+        "http://swavalambi-frontend-1772381208.s3-website-us-east-1.amazonaws.com",
+        "https://d21tmg809bunv0.cloudfront.net"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

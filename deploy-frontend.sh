@@ -86,10 +86,29 @@ aws s3 sync dist/ s3://$S3_BUCKET_FRONTEND/ \
 
 echo -e "${GREEN}✓ Deployed to S3${NC}"
 
-echo -e "\n${YELLOW}Step 4: Checking if CloudFront invalidation is needed...${NC}"
-echo -e "${BLUE}Note: CloudFront caching may delay updates (5-10 min)${NC}"
-echo -e "${BLUE}To force immediate refresh, run:${NC}"
-echo -e "  aws cloudfront create-invalidation --distribution-id YOUR_DIST_ID --paths \"/*\" --profile $AWS_PROFILE"
+echo -e "\n${YELLOW}Step 4: Invalidating CloudFront cache...${NC}"
+
+# Get CloudFront distribution ID
+CLOUDFRONT_DIST_ID=$(aws cloudfront list-distributions \
+  --query "DistributionList.Items[?contains(DomainName, 'd21tmg809bunv0')].Id" \
+  --output text \
+  --profile $AWS_PROFILE 2>/dev/null)
+
+if [ -n "$CLOUDFRONT_DIST_ID" ]; then
+    echo -e "${BLUE}Found CloudFront distribution: $CLOUDFRONT_DIST_ID${NC}"
+    
+    aws cloudfront create-invalidation \
+      --distribution-id $CLOUDFRONT_DIST_ID \
+      --paths "/*" \
+      --profile $AWS_PROFILE \
+      --output json > /dev/null
+    
+    echo -e "${GREEN}✓ CloudFront cache invalidated${NC}"
+    echo -e "${BLUE}Note: Invalidation takes 1-2 minutes to complete${NC}"
+else
+    echo -e "${YELLOW}⚠ CloudFront distribution not found - skipping invalidation${NC}"
+    echo -e "${BLUE}Note: CloudFront caching may delay updates (5-10 min)${NC}"
+fi
 
 echo -e "\n${BLUE}========================================${NC}"
 echo -e "${GREEN}Frontend deployment complete!${NC}"

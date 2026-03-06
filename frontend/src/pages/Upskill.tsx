@@ -4,6 +4,8 @@ import { Link } from "react-router-dom";
 import BottomNav from "../components/BottomNav";
 import FloatingAssistant from "../components/FloatingAssistant";
 
+const API_BASE = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : "http://localhost:8000/api";
+
 interface Course {
   id: string;
   name: string;
@@ -41,7 +43,7 @@ export default function Upskill() {
         const ratingStr = localStorage.getItem('swavalambi_skill_rating') || '0';
         const rating = parseInt(ratingStr, 10);
 
-        const res = await fetch('http://localhost:8000/api/recommendations/fetch', {
+        const res = await fetch(`${API_BASE}/recommendations/fetch`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
