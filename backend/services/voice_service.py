@@ -28,9 +28,13 @@ def clean_text_for_tts(text: str) -> str:
     - Markdown bold (**text**)
     - Markdown italic (*text*)
     - Emojis and emoticons
-    - Forward slashes (/)
-    - Backslashes (\\)
+    - Special characters: / \ | # ~ ` _ [ ] { } < > @ $ % ^ & = + : ; " ' — – • °
     - Extra whitespace
+    
+    Preserves:
+    - Punctuation: . , ? ! ( ) -
+    - Numbers and letters
+    - Unicode characters (Hindi, Telugu, etc.)
     
     Args:
         text: Raw text with markdown and emojis
@@ -47,9 +51,35 @@ def clean_text_for_tts(text: str) -> str:
     # Remove markdown italic (*text*)
     text = re.sub(r'\*([^*]+)\*', r'\1', text)
     
-    # Remove forward slashes and backslashes
+    # Remove special characters that confuse TTS
     text = text.replace('/', ' ')
     text = text.replace('\\', ' ')
+    text = text.replace('|', ' ')
+    text = text.replace('#', ' ')
+    text = text.replace('~', ' ')
+    text = text.replace('`', ' ')
+    text = text.replace('_', ' ')
+    text = text.replace('[', ' ')
+    text = text.replace(']', ' ')
+    text = text.replace('{', ' ')
+    text = text.replace('}', ' ')
+    text = text.replace('<', ' ')
+    text = text.replace('>', ' ')
+    text = text.replace('@', ' ')
+    text = text.replace('$', ' ')
+    text = text.replace('%', ' ')
+    text = text.replace('^', ' ')
+    text = text.replace('&', ' ')
+    text = text.replace('=', ' ')
+    text = text.replace('+', ' ')
+    text = text.replace(':', ' ')
+    text = text.replace(';', ' ')
+    text = text.replace('"', ' ')
+    text = text.replace("'", ' ')
+    text = text.replace('—', ' ')
+    text = text.replace('–', ' ')
+    text = text.replace('•', ' ')
+    text = text.replace('°', ' ')
     
     # Remove emojis (Unicode emoji ranges)
     # This covers most common emojis
