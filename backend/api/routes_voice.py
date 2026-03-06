@@ -429,11 +429,12 @@ async def voice_chat_stream(
                     except Exception as e:
                         logger.warning("Failed to get user data: %s", e)
                 
-                _agent_sessions[session_id] = ProfilingAgent(
+                agent = ProfilingAgent(
                     session_id=session_id,
                     user_name=user_name,
                     preferred_language=preferred_language
                 )
+                set_agent_session(session_id, agent)
                 
                 # Restore chat history
                 if user_id:
@@ -448,12 +449,12 @@ async def voice_chat_stream(
                                     "role": msg["role"],
                                     "content": [{"text": msg["content"]}]
                                 })
-                            _agent_sessions[session_id].agent.messages = restored_messages
+                            agent.agent.messages = restored_messages
                             logger.info("Restored chat history for streaming")
                     except Exception as e:
                         logger.warning("Failed to restore chat history: %s", e)
             
-            agent = _agent_sessions[session_id]
+            agent = get_agent_session(session_id)
             full_response = ""
             
             # Stream LLM text chunks to UI while collecting for TTS
