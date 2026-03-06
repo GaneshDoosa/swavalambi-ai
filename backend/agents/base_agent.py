@@ -51,7 +51,7 @@ class BaseAgent:
         """Calculate eligibility score - override in subclass."""
         raise NotImplementedError
     
-    def search(self, user_profile: dict, limit: int = 10, query_embedding: list[float] = None) -> list[dict]:
+    def search(self, user_profile: dict, limit: int = 10, query_embedding: list[float] = None, filters: dict = None) -> list[dict]:
         """Search using vector similarity and eligibility scoring."""
         import time
         
@@ -64,7 +64,7 @@ class BaseAgent:
         
         # Vector search
         vector_start = time.time()
-        results = self.vector_store.search(self.index_name, query_embedding, limit=15)
+        results = self.vector_store.search(self.index_name, query_embedding, limit=15, filters=filters)
         vector_time = time.time() - vector_start
         
         # Eligibility scoring

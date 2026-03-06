@@ -271,7 +271,7 @@ class PostgresPgVectorStore(VectorStore):
         finally:
             self._put_connection(conn)
     
-    def search(self, index_name: str, query_embedding: List[float], limit: int = 10) -> List[Dict[str, Any]]:
+    def search(self, index_name: str, query_embedding: List[float], limit: int = 10, filters: Dict[str, Any] = None) -> List[Dict[str, Any]]:
         import numpy as np
         conn = self._get_connection()
         try:
@@ -279,21 +279,41 @@ class PostgresPgVectorStore(VectorStore):
                 # Convert list to numpy array for pgvector
                 query_vec = np.array(query_embedding)
                 
-                # Get all columns except embedding
-                cur.execute(f"""
-                    SELECT column_name 
-                    FROM information_schema.columns 
-                    WHERE table_name = %s AND column_name != 'embedding' AND column_name != 'created_at'
-                """, (index_name,))
-                columns = [row[0] for row in cur.fetchall()]
+                # Define columns for each table (hardcoded to avoid information_schema query)
+                if index_name == 'jobs':
+                    columns = ['id', 'title', 'description', 'company', 'skills', 'location', 'job_type', 'vacancies', 'min_salary', 'max_salary', 'experience']
+                elif index_name == 'schemes':
+                    columns = ['id', 'name', 'ministry', 'description', 'categories', 'tags', 'state', 'level', 'url']
+                elif index_name == 'upskill':
+                    columns = ['id', 'name', 'description', 'provider', 'skills', 'location', 'address', 'contact', 'email']
+                else:
+                    columns = ['id']
+                
                 columns_str = ', '.join(columns)
                 
-                cur.execute(f"""
+                # Build WHERE clause for filters (only for jobs table)
+                where_clause = ""
+                params = [query_vec]  # First param for SELECT score calculation
+                
+                if filters and filters.get('min_salary') and index_name == 'jobs':
+                    # Filter: max_salary >= user's expectation OR max_salary is 0/NULL (not specified)
+                    where_clause = "WHERE (max_salary >= %s OR max_salary = 0 OR max_salary IS NULL)"
+                    params.append(filters['min_salary'])
+                
+                # Add remaining vector params
+                params.extend([query_vec, limit])  # For ORDER BY and LIMIT
+                
+                sql_query = f"""
                     SELECT {columns_str}, 1 - (embedding <=> %s) as score
                     FROM {index_name}
+                    {where_clause}
                     ORDER BY embedding <=> %s
                     LIMIT %s
-                """, (query_vec, query_vec, limit))
+                """
+                print(f"\n🔍 SQL Query: {sql_query}")
+                print(f"📊 Params: filters={filters}, limit={limit}")
+
+                cur.execute(sql_query, params)
                 
                 results = []
                 for row in cur.fetchall():

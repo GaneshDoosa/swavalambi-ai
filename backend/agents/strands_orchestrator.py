@@ -80,9 +80,12 @@ def orchestrate(user_profile: Dict[str, Any] = None, task: str = None, context: 
     if intent == 'job':
         print(f"  → Searching jobs...")
         tool_call_start = time.time()
-        jobs = search_jobs_tool(skill, skill_level, state, query_embedding=query_embedding)[:5]
+        salary_expectation = user_profile.get('salary_expectation')
+        print(f"  💰 Salary from profile: {salary_expectation}")
+        jobs = search_jobs_tool(skill, skill_level, state, query_embedding=query_embedding, salary_expectation=salary_expectation)[:5]
         tool_call_time = time.time() - tool_call_start
         print(f"  → Tool call completed in {tool_call_time:.3f}s")
+        print(f"  ✅ Found {len(jobs)} jobs")
         message = f"Found {len(jobs)} job opportunities for {skill} professionals in {state}."
         
     elif intent == 'upskill':
@@ -91,6 +94,7 @@ def orchestrate(user_profile: Dict[str, Any] = None, task: str = None, context: 
         training_centers = search_upskill_tool(skill, skill_level, state, query_embedding=query_embedding)[:5]
         tool_call_time = time.time() - tool_call_start
         print(f"  → Tool call completed in {tool_call_time:.3f}s")
+        print(f"  ✅ Found {len(training_centers)} training centers")
         message = f"Found {len(training_centers)} training programs for {skill} in {state}."
         
     elif intent == 'loan':
@@ -99,6 +103,7 @@ def orchestrate(user_profile: Dict[str, Any] = None, task: str = None, context: 
         schemes = search_schemes_tool(skill, intent, skill_level, state, query_embedding=query_embedding)[:5]
         tool_call_time = time.time() - tool_call_start
         print(f"  → Tool call completed in {tool_call_time:.3f}s")
+        print(f"  ✅ Found {len(schemes)} schemes")
         message = f"Found {len(schemes)} government schemes for {skill} professionals in {state}."
         
     else:
@@ -107,15 +112,13 @@ def orchestrate(user_profile: Dict[str, Any] = None, task: str = None, context: 
         tool_call_start = time.time()
         jobs = search_jobs_tool(skill, skill_level, state, query_embedding=query_embedding)[:5]
         tool_call_time = time.time() - tool_call_start
-        print(f"  → Tool call completed in {tool_call_time:.3f}s")
-        message = f"Found {len(jobs)} job opportunities for {skill} professionals in {state}."
-    
     tool_time = time.time() - tool_start
     
-    print(f"\n✅ Results:")
-    print(f"  Jobs: {len(jobs)}")
-    print(f"  Schemes: {len(schemes)}")
-    print(f"  Training Centers: {len(training_centers)}")
+    total_time = time.time() - start_time
+    print(f"\n⏱️  Performance:")
+    print(f"  Embedding: {embed_time:.3f}s")
+    print(f"  Tool execution: {tool_time:.3f}s")
+    print(f"  Total: {total_time:.3f}s")
     
     total_time = time.time() - start_time
     print(f"\n⏱️  Performance:")

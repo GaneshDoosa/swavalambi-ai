@@ -3,6 +3,7 @@ from fastapi.responses import StreamingResponse
 from schemas.models import ChatRequest, ChatResponse
 from agents.profiling_agent import ProfilingAgent
 from services.dynamodb_service import update_chat_history
+from common.agent_sessions import get_agent_session, set_agent_session, has_agent_session
 import warnings
 import os
 import json
@@ -14,9 +15,6 @@ warnings.filterwarnings("ignore", category=UserWarning, module="pydantic.main")
 
 router = APIRouter()
 
-# In-memory dictionary to hold Agent instances mapped by session_id
-_agent_sessions = {}
-
 @router.post("/chat-profile", response_model=ChatResponse, summary="AI Gateway chat using Strands")
 async def chat_profile(request: ChatRequest):
     """
@@ -24,7 +22,7 @@ async def chat_profile(request: ChatRequest):
     Uses Strands framework underneath to maintain memory context based on session_id.
     """
     # Retrieve or create agent session
-    is_new_session = request.session_id not in _agent_sessions
+    is_new_session = not has_agent_session(request.session_id)
     
     if is_new_session:
         # Get user's preferred language
@@ -38,11 +36,11 @@ async def chat_profile(request: ChatRequest):
             except Exception as e:
                 print(f"[WARN] Failed to get preferred language: {e}")
         
-        _agent_sessions[request.session_id] = ProfilingAgent(
+        set_agent_session(request.session_id, ProfilingAgent(
             session_id=request.session_id,
             user_name=request.user_name or "",
             preferred_language=preferred_language
-        )
+        ))
         
         # If user_id is provided, try to restore previous chat history
         chat_restored = False
@@ -61,7 +59,7 @@ async def chat_profile(request: ChatRequest):
                             "content": [{"text": msg["content"]}]
                         })
                     # Set the agent's messages
-                    _agent_sessions[request.session_id].agent.messages = restored_messages
+                    get_agent_session(request.session_id).agent.messages = restored_messages
                     print(f"[INFO] Restored {len(chat_history)} messages from DynamoDB for user {request.user_id}")
                     chat_restored = True
             except Exception as e:
@@ -143,7 +141,7 @@ async def chat_profile(request: ChatRequest):
             except Exception as e:
                 print(f"[WARN] Failed to initialize chat history: {e}")
         
-    agent = _agent_sessions[request.session_id]
+    agent = get_agent_session(request.session_id)
     
     try:
         # Get response from the Strands LLM

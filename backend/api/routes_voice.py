@@ -7,15 +7,13 @@ from typing import Optional
 from pydantic import BaseModel
 from services.voice_service import get_voice_service
 from agents.profiling_agent import ProfilingAgent
+from common.agent_sessions import get_agent_session, set_agent_session, has_agent_session
 import logging
 import os
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-# In-memory agent sessions (shared with routes_chat.py)
-_agent_sessions = {}
 
 
 class SynthesizeRequest(BaseModel):
@@ -165,7 +163,7 @@ async def voice_chat(
         logger.info("User said (%s): %s", language, user_text)
         
         # Step 3: Get AI response
-        is_new_session = session_id not in _agent_sessions
+        is_new_session = not has_agent_session(session_id)
         
         if is_new_session:
             # Get user's preferred language and name
@@ -185,11 +183,11 @@ async def voice_chat(
                     logger.warning("Failed to get user preferences: %s", e)
             
             # Create agent with preferred language
-            _agent_sessions[session_id] = ProfilingAgent(
+            set_agent_session(session_id, ProfilingAgent(
                 session_id=session_id,
                 user_name=user_name,
                 preferred_language=preferred_language
-            )
+            ))
             
             # Restore chat history if user_id is provided
             chat_restored = False
@@ -205,7 +203,7 @@ async def voice_chat(
                                 "role": msg["role"],
                                 "content": [{"text": msg["content"]}]
                             })
-                        _agent_sessions[session_id].agent.messages = restored_messages
+                        get_agent_session(session_id).agent.messages = restored_messages
                         logger.info("Restored %d messages from DynamoDB for voice chat %s", len(chat_history), user_id)
                         chat_restored = True
                 except Exception as e:
@@ -276,7 +274,7 @@ async def voice_chat(
                 except Exception as e:
                     logger.warning("Failed to initialize voice chat greeting: %s", e)
                     
-        agent = _agent_sessions[session_id]
+        agent = get_agent_session(session_id)
         # Send user's original language text directly to LLM (no translation needed)
         result = agent.run(user_text)
         # LLM responds in user's language (based on system prompt and input language)

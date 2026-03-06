@@ -32,9 +32,11 @@ router = APIRouter()
 
 class RecommendationRequest(BaseModel):
     session_id: str
-    user_id: Optional[str] = None           # DynamoDB user ID (optional)
-    profession_skill: Optional[str] = None   # Direct profile fields (fallback)
-    intent: Optional[str] = None
+    user_id: Optional[str] = None           # DynamoDB user ID (when provided, fetches profile)
+    intent: Optional[str] = None            # Intent override (job/upskill/loan)
+    
+    # Fallback fields (used when user_id is not provided)
+    profession_skill: Optional[str] = None
     skill_rating: Optional[int] = None
     state: Optional[str] = None
     location: Optional[str] = None          # Alias for state
@@ -77,15 +79,30 @@ async def get_recommendations(req: RecommendationRequest):
             # Required fields
             if "profession_skill" not in profile_assessment:
                 raise HTTPException(status_code=400, detail="profession_skill missing in profile")
-            if "intent" not in profile_assessment:
-                raise HTTPException(status_code=400, detail="intent missing in profile")
             
             user_profile["profession_skill"] = profile_assessment["profession_skill"]
-            # Allow intent override from request, otherwise use profile intent
-            user_profile["intent"] = req.intent if req.intent else profile_assessment["intent"]
-            user_profile["skill_rating"] = int(profile_assessment.get("theory_score", 3))
-            user_profile["state"] = profile_assessment.get("preferred_location", "All India")
             
+            # Intent: Use request override if provided, otherwise use profile intent
+            if req.intent:
+                user_profile["intent"] = req.intent.strip().lower()
+                logger.info(f"Using intent override from request: {user_profile['intent']}")
+            elif "intent" in profile_assessment:
+                user_profile["intent"] = profile_assessment["intent"]
+            else:
+                raise HTTPException(status_code=400, detail="intent missing in profile and not provided in request")
+            
+            user_profile["skill_rating"] = int(profile_assessment.get("theory_score", 3))
+            
+            # Set location (both state and preferred_location for compatibility)
+            location = profile_assessment.get("preferred_location", "All India")
+            user_profile["state"] = location
+            user_profile["preferred_location"] = location
+            if profile_assessment.get("salary_expectation"):
+               try:
+                   user_profile["salary_expectation"] = int(profile_assessment["salary_expectation"])
+                   logger.info(f"Parsed salary_expectation: {user_profile['salary_expectation']}")
+               except (ValueError, TypeError) as e:
+                   logger.warning(f"Failed to parse salary_expectation: {e}")
             # Additional context fields
             if profile_assessment.get("gender"):
                 user_profile["gender"] = profile_assessment["gender"]

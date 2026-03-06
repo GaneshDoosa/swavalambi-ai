@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-def search_jobs_tool(skill: str, skill_level: int, state: str, query_embedding: List[float] = None) -> List[Dict]:
+def search_jobs_tool(skill: str, skill_level: int, state: str, query_embedding: List[float] = None, salary_expectation: int = None) -> List[Dict]:
     """
     Search for jobs based on user's skill and location.
     
@@ -16,6 +16,7 @@ def search_jobs_tool(skill: str, skill_level: int, state: str, query_embedding: 
         skill_level: Skill proficiency level from 1-5
         state: User's state in India
         query_embedding: Pre-generated embedding vector (optional, for performance)
+        salary_expectation: Minimum salary expectation (optional, filters results)
     
     Returns:
         List of relevant jobs ranked by match score
@@ -31,7 +32,17 @@ def search_jobs_tool(skill: str, skill_level: int, state: str, query_embedding: 
         "state": state
     }
     
-    return agent.search_jobs(user_profile, limit=5, query_embedding=query_embedding)
+    # Build filters for SQL WHERE clause
+    filters = {}
+    if salary_expectation:
+        filters['min_salary'] = salary_expectation
+        print(f"  💰 Applying salary filter: min_salary >= {salary_expectation}")
+    
+    # Only pass filters if they exist
+    if filters:
+        return agent.search_jobs(user_profile, limit=5, query_embedding=query_embedding, filters=filters)
+    else:
+        return agent.search_jobs(user_profile, limit=5, query_embedding=query_embedding)
 
 JOBS_TOOL_DEFINITION = {
     "name": "search_jobs",
