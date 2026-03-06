@@ -115,13 +115,24 @@ app.include_router(profile_picture_router, prefix="/api", tags=["Profile Picture
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize S3 bucket on startup."""
+    """Initialize S3 bucket and agent instances on startup."""
     try:
         from services.s3_service import S3Service
         s3_service = S3Service()
         s3_service.ensure_bucket_exists()
     except Exception as e:
         logging.error(f"Failed to initialize S3 bucket: {e}")
+    
+    # Pre-initialize agent instances and connection pool
+    try:
+        from agents.agent_factory import get_jobs_agent, get_scheme_agent, get_upskill_agent
+        logging.info("Pre-initializing agent instances...")
+        get_jobs_agent()
+        get_scheme_agent()
+        get_upskill_agent()
+        logging.info("✅ All agents pre-initialized with connection pool")
+    except Exception as e:
+        logging.error(f"Failed to pre-initialize agents: {e}")
 
 @app.get("/health")
 def health_check():

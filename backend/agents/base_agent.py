@@ -53,20 +53,31 @@ class BaseAgent:
     
     def search(self, user_profile: dict, limit: int = 10, query_embedding: list[float] = None) -> list[dict]:
         """Search using vector similarity and eligibility scoring."""
+        import time
+        
         if query_embedding is None:
-            logger.info(f"[{self.index_name}] Generating NEW embedding")
+            logger.info(f"[{self.index_name}] Generating embedding for this request")
             query_text = self._build_query_text(user_profile)
             query_embedding = self.embedding_provider.generate_embedding(query_text)
         else:
-            logger.info(f"[{self.index_name}] Using PRE-GENERATED embedding")
+            logger.debug(f"[{self.index_name}] Reusing embedding from orchestrator")
         
-        results = self.vector_store.search(self.index_name, query_embedding, limit=50)
+        # Vector search
+        vector_start = time.time()
+        results = self.vector_store.search(self.index_name, query_embedding, limit=15)
+        vector_time = time.time() - vector_start
         
+        # Eligibility scoring
+        scoring_start = time.time()
         for doc in results:
             doc["eligibility_score"] = self.calculate_eligibility_score(doc, user_profile)
             doc["final_score"] = (doc["vector_score"] * 0.6) + (doc["eligibility_score"] * 0.4)
         
         results.sort(key=lambda x: x["final_score"], reverse=True)
+        scoring_time = time.time() - scoring_start
+        
+        logger.info(f"[{self.index_name}] Search timing: vector={vector_time:.3f}s, scoring={scoring_time:.3f}s, total={vector_time+scoring_time:.3f}s")
+        
         return results[:limit]
     
     def _build_query_text(self, user_profile: dict) -> str:

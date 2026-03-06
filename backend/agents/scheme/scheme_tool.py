@@ -21,24 +21,10 @@ def search_schemes_tool(skill: str, intent: str, skill_level: int, state: str, q
     Returns:
         List of relevant schemes ranked by eligibility score
     """
-    from agents.scheme.scheme_agent import SchemeAgent
-    from common.providers.embedding_providers import BedrockTitanEmbeddingProvider
-    from common.stores.vector_stores import PostgresPgVectorStore
+    from agents.agent_factory import get_scheme_agent
     
-    embedding_provider = BedrockTitanEmbeddingProvider(
-        region=os.getenv("AWS_DEFAULT_REGION", "us-east-1"),
-        model="amazon.titan-embed-text-v2:0"
-    )
-    
-    vector_store = PostgresPgVectorStore(
-        connection_string=os.getenv("POSTGRES_CONNECTION_STRING")
-    )
-    
-    agent = SchemeAgent(
-        embedding_provider=embedding_provider,
-        vector_store=vector_store,
-        index_name="schemes"
-    )
+    # Use singleton agent instance
+    agent = get_scheme_agent()
     
     user_profile = {
         "skill": skill,

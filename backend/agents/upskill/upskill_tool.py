@@ -20,24 +20,10 @@ def search_upskill_tool(skill: str, skill_level: int, state: str, query_embeddin
     Returns:
         List of relevant training courses ranked by match score
     """
-    from agents.upskill.upskill_agent import UpskillAgent
-    from common.providers.embedding_providers import BedrockTitanEmbeddingProvider
-    from common.stores.vector_stores import PostgresPgVectorStore
+    from agents.agent_factory import get_upskill_agent
     
-    embedding_provider = BedrockTitanEmbeddingProvider(
-        region=os.getenv("AWS_DEFAULT_REGION", "us-east-1"),
-        model="amazon.titan-embed-text-v2:0"
-    )
-    
-    vector_store = PostgresPgVectorStore(
-        connection_string=os.getenv("POSTGRES_CONNECTION_STRING")
-    )
-    
-    agent = UpskillAgent(
-        embedding_provider=embedding_provider,
-        vector_store=vector_store,
-        index_name="upskill"  # Using upskill table now
-    )
+    # Use singleton agent instance
+    agent = get_upskill_agent()
     
     user_profile = {
         "skill": skill,

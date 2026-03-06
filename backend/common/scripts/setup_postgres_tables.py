@@ -97,23 +97,23 @@ def setup_postgres_tables():
         """)
         logger.info("✅ Created upskill table")
         
-        # Create vector indexes for fast similarity search
+        # Create vector indexes for fast similarity search (HNSW)
         cur.execute("""
             CREATE INDEX schemes_embedding_idx 
-            ON schemes USING ivfflat (embedding vector_cosine_ops)
-            WITH (lists = 100)
+            ON schemes USING hnsw (embedding vector_cosine_ops)
+            WITH (m = 16, ef_construction = 64)
         """)
         cur.execute("""
             CREATE INDEX jobs_embedding_idx 
-            ON jobs USING ivfflat (embedding vector_cosine_ops)
-            WITH (lists = 100)
+            ON jobs USING hnsw (embedding vector_cosine_ops)
+            WITH (m = 16, ef_construction = 64)
         """)
         cur.execute("""
             CREATE INDEX upskill_embedding_idx 
-            ON upskill USING ivfflat (embedding vector_cosine_ops)
-            WITH (lists = 100)
+            ON upskill USING hnsw (embedding vector_cosine_ops)
+            WITH (m = 16, ef_construction = 64)
         """)
-        logger.info("✅ Created vector indexes")
+        logger.info("✅ Created HNSW vector indexes")
         
         # Create additional indexes
         cur.execute("CREATE INDEX schemes_state_idx ON schemes(state)")

@@ -20,24 +20,10 @@ def search_jobs_tool(skill: str, skill_level: int, state: str, query_embedding: 
     Returns:
         List of relevant jobs ranked by match score
     """
-    from agents.jobs.jobs_agent import JobsAgent
-    from common.providers.embedding_providers import BedrockTitanEmbeddingProvider
-    from common.stores.vector_stores import PostgresPgVectorStore
+    from agents.agent_factory import get_jobs_agent
     
-    embedding_provider = BedrockTitanEmbeddingProvider(
-        region=os.getenv("AWS_DEFAULT_REGION", "us-east-1"),
-        model="amazon.titan-embed-text-v2:0"
-    )
-    
-    vector_store = PostgresPgVectorStore(
-        connection_string=os.getenv("POSTGRES_CONNECTION_STRING")
-    )
-    
-    agent = JobsAgent(
-        embedding_provider=embedding_provider,
-        vector_store=vector_store,
-        index_name="jobs"  # Using jobs table now
-    )
+    # Use singleton agent instance
+    agent = get_jobs_agent()
     
     user_profile = {
         "skill": skill,

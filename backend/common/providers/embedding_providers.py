@@ -4,8 +4,9 @@ embedding_providers.py — Concrete implementations of embedding providers.
 
 import json
 import logging
-from typing import List
+from typing import List, Optional
 from .embedding_provider import EmbeddingProvider
+from .embedding_cache import EmbeddingCache
 
 logger = logging.getLogger(__name__)
 
@@ -64,30 +65,80 @@ class AzureOpenAIEmbeddingProvider(EmbeddingProvider):
 
 
 class BedrockTitanEmbeddingProvider(EmbeddingProvider):
-    """AWS Bedrock Titan embedding provider."""
+    """AWS Bedrock Titan embedding provider with persistent caching."""
     
-    def __init__(self, region: str = "us-east-1", model: str = "amazon.titan-embed-text-v2:0"):
+    def __init__(
+        self, 
+        region: str = "us-east-1", 
+        model: str = "amazon.titan-embed-text-v2:0", 
+        use_cache: bool = True,
+        cache_file: str = "/tmp/embedding_cache.pkl"
+    ):
         try:
             import boto3
             self.client = boto3.client("bedrock-runtime", region_name=region)
             self.model = model
             self._dimension = 1024 if "v2" in model else 1536
+            self.use_cache = use_cache
+            
+            # Initialize cache with save_interval=2 for testing
+            self.cache = EmbeddingCache(cache_file=cache_file, save_interval=2) if use_cache else None
         except ImportError:
             raise ImportError("boto3 required. Install: pip install boto3")
     
     def generate_embedding(self, text: str) -> List[float]:
+        """Generate embedding with caching"""
+        
+        # Check cache first
+        if self.use_cache and self.cache:
+            cached = self.cache.get(text)
+            if cached is not None:
+                return cached
+        
+        # Generate embedding from Bedrock
         response = self.client.invoke_model(
             modelId=self.model,
             body=json.dumps({"inputText": text})
         )
         result = json.loads(response["body"].read())
-        return result["embedding"]
+        embedding = result["embedding"]
+        
+        # Store in cache
+        if self.use_cache and self.cache:
+            self.cache.put(text, embedding)
+            
+            # Log cache stats periodically
+            stats = self.cache.get_stats()
+            if stats['misses'] % 10 == 0:
+                logger.info(
+                    f"Embedding cache: {stats['cache_size']} entries, "
+                    f"{stats['hit_rate']:.1f}% hit rate"
+                )
+        
+        return embedding
     
     def get_dimension(self) -> int:
         return self._dimension
     
     def get_provider_name(self) -> str:
-        return f"Bedrock-{self.model}"
+        cache_status = "cached" if self.use_cache else "uncached"
+        return f"Bedrock-{self.model}-{cache_status}"
+    
+    def get_cache_stats(self) -> Optional[dict]:
+        """Get cache statistics"""
+        if self.cache:
+            return self.cache.get_stats()
+        return None
+    
+    def flush_cache(self):
+        """Force save cache to disk"""
+        if self.cache:
+            self.cache.flush()
+    
+    def __del__(self):
+        """Cleanup - flush cache on deletion"""
+        if self.cache:
+            self.cache.flush()
 
 
 class HuggingFaceEmbeddingProvider(EmbeddingProvider):

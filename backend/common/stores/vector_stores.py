@@ -192,87 +192,136 @@ class OpenSearchLocalStore(VectorStore):
 
 
 class PostgresPgVectorStore(VectorStore):
-    """PostgreSQL with pgvector extension."""
+    """PostgreSQL with pgvector extension and connection pooling."""
     
-    def __init__(self, connection_string: str):
+    def __init__(self, connection_string: str, min_conn: int = 2, max_conn: int = 10):
         try:
             import psycopg2
+            from psycopg2 import pool
             from pgvector.psycopg2 import register_vector
-            self.conn = psycopg2.connect(connection_string)
-            register_vector(self.conn)
+            
+            # Create connection pool
+            self.pool = pool.ThreadedConnectionPool(
+                min_conn,
+                max_conn,
+                connection_string
+            )
+            
+            # Register vector type with a test connection
+            conn = self.pool.getconn()
+            try:
+                register_vector(conn)
+            finally:
+                self.pool.putconn(conn)
+            
+            logger.info(f"PostgreSQL connection pool created: min={min_conn}, max={max_conn}")
+            
         except ImportError:
             raise ImportError("psycopg2 and pgvector required. Install: pip install psycopg2-binary pgvector")
     
+    def _get_connection(self):
+        """Get a connection from the pool"""
+        return self.pool.getconn()
+    
+    def _put_connection(self, conn):
+        """Return a connection to the pool"""
+        self.pool.putconn(conn)
+    
     def create_index(self, index_name: str, dimension: int) -> None:
-        with self.conn.cursor() as cur:
-            # Create extension
-            cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
-            
-            # Create table
-            cur.execute(f"""
-                CREATE TABLE IF NOT EXISTS {index_name} (
-                    id TEXT PRIMARY KEY,
-                    embedding vector({dimension}),
-                    metadata JSONB
-                )
-            """)
-            
-            # Create index
-            cur.execute(f"""
-                CREATE INDEX IF NOT EXISTS {index_name}_embedding_idx 
-                ON {index_name} USING ivfflat (embedding vector_cosine_ops)
-            """)
-            
-            self.conn.commit()
-            logger.info(f"Created pgvector table: {index_name}")
+        conn = self._get_connection()
+        try:
+            with conn.cursor() as cur:
+                # Create extension
+                cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
+                
+                # Create table
+                cur.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {index_name} (
+                        id TEXT PRIMARY KEY,
+                        embedding vector({dimension}),
+                        metadata JSONB
+                    )
+                """)
+                
+                # Create HNSW index (faster than IVFFlat for approximate search)
+                # m=16: number of connections per layer (higher = better recall, slower build)
+                # ef_construction=64: size of dynamic candidate list (higher = better quality, slower build)
+                cur.execute(f"""
+                    CREATE INDEX IF NOT EXISTS {index_name}_embedding_idx 
+                    ON {index_name} USING hnsw (embedding vector_cosine_ops)
+                    WITH (m = 16, ef_construction = 64)
+                """)
+                
+                conn.commit()
+                logger.info(f"Created pgvector table with HNSW index: {index_name}")
+        finally:
+            self._put_connection(conn)
     
     def index_document(self, index_name: str, doc_id: str, embedding: List[float], metadata: Dict[str, Any]) -> None:
         import json
-        with self.conn.cursor() as cur:
-            cur.execute(f"""
-                INSERT INTO {index_name} (id, embedding, metadata)
-                VALUES (%s, %s, %s)
-                ON CONFLICT (id) DO UPDATE SET embedding = EXCLUDED.embedding, metadata = EXCLUDED.metadata
-            """, (doc_id, embedding, json.dumps(metadata)))
-            self.conn.commit()
+        conn = self._get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(f"""
+                    INSERT INTO {index_name} (id, embedding, metadata)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (id) DO UPDATE SET embedding = EXCLUDED.embedding, metadata = EXCLUDED.metadata
+                """, (doc_id, embedding, json.dumps(metadata)))
+                conn.commit()
+        finally:
+            self._put_connection(conn)
     
     def search(self, index_name: str, query_embedding: List[float], limit: int = 10) -> List[Dict[str, Any]]:
         import numpy as np
-        with self.conn.cursor() as cur:
-            # Convert list to numpy array for pgvector
-            query_vec = np.array(query_embedding)
-            
-            # Get all columns except embedding
-            cur.execute(f"""
-                SELECT column_name 
-                FROM information_schema.columns 
-                WHERE table_name = %s AND column_name != 'embedding' AND column_name != 'created_at'
-            """, (index_name,))
-            columns = [row[0] for row in cur.fetchall()]
-            columns_str = ', '.join(columns)
-            
-            cur.execute(f"""
-                SELECT {columns_str}, 1 - (embedding <=> %s) as score
-                FROM {index_name}
-                ORDER BY embedding <=> %s
-                LIMIT %s
-            """, (query_vec, query_vec, limit))
-            
-            results = []
-            for row in cur.fetchall():
-                result = {}
-                for i, col in enumerate(columns):
-                    result[col] = row[i]
-                result["vector_score"] = float(row[-1])
-                results.append(result)
-            
-            return results
+        conn = self._get_connection()
+        try:
+            with conn.cursor() as cur:
+                # Convert list to numpy array for pgvector
+                query_vec = np.array(query_embedding)
+                
+                # Get all columns except embedding
+                cur.execute(f"""
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name = %s AND column_name != 'embedding' AND column_name != 'created_at'
+                """, (index_name,))
+                columns = [row[0] for row in cur.fetchall()]
+                columns_str = ', '.join(columns)
+                
+                cur.execute(f"""
+                    SELECT {columns_str}, 1 - (embedding <=> %s) as score
+                    FROM {index_name}
+                    ORDER BY embedding <=> %s
+                    LIMIT %s
+                """, (query_vec, query_vec, limit))
+                
+                results = []
+                for row in cur.fetchall():
+                    result = {}
+                    for i, col in enumerate(columns):
+                        result[col] = row[i]
+                    result["vector_score"] = float(row[-1])
+                    results.append(result)
+                
+                return results
+        finally:
+            self._put_connection(conn)
     
     def delete_index(self, index_name: str) -> None:
-        with self.conn.cursor() as cur:
-            cur.execute(f"DROP TABLE IF EXISTS {index_name}")
-            self.conn.commit()
-            logger.info(f"Deleted table: {index_name}")
+        conn = self._get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(f"DROP TABLE IF EXISTS {index_name}")
+                conn.commit()
+                logger.info(f"Deleted table: {index_name}")
+        finally:
+            self._put_connection(conn)
+    
+    def close_pool(self):
+        """Close all connections in the pool"""
+        if hasattr(self, 'pool'):
+            self.pool.closeall()
+            logger.info("PostgreSQL connection pool closed")
     
     def get_store_name(self) -> str:
         return "PostgresPgVector"
