@@ -28,7 +28,7 @@ def clean_text_for_tts(text: str) -> str:
     - Markdown bold (**text**)
     - Markdown italic (*text*)
     - Emojis and emoticons
-    - Special characters: / \ | # ~ ` _ [ ] { } < > @ $ % ^ & = + : ; " ' — – • °
+    - Special characters: / \\ | # ~ ` _ [ ] { } < > @ $ % ^ & = + : ; " ' — – • °
     - Extra whitespace
     
     Preserves:

@@ -110,6 +110,11 @@ pip install sarvamai -t . \
     --upgrade \
     --quiet
 
+# Install websockets
+pip install websockets -t . \
+    --upgrade \
+    --quiet
+
 echo -e "${GREEN}✓ Binary packages installed${NC}"
 
 # Verify packages were installed
@@ -149,6 +154,8 @@ zip -r $PACKAGE_NAME \
   numpy* \
   sarvamai/ \
   sarvamai* \
+  websockets/ \
+  websockets* \
   -x "*.pyc" -x "__pycache__/*" -x "tests/*" -x ".env" -x "*.md" > /dev/null
 
 PACKAGE_SIZE=$(du -h $PACKAGE_NAME | cut -f1)
