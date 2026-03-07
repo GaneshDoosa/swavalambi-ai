@@ -1,6 +1,10 @@
 # Environment variables — never commit secrets
 .env
 .env.local
+.env.lambda
+.env*.backup
+!.env.lambda.example
+!.env.example
 
 # Python artifacts
 __pycache__/
