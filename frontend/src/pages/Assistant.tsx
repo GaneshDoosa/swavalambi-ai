@@ -1122,21 +1122,25 @@ export default function Assistant() {
     if (!file) return;
 
     const url = URL.createObjectURL(file);
+
+    // Use robust unique IDs to prevent collisions
+    const userMsgId = `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const assistantMsgId = `assistant-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
     setMessages((prev) => [
       ...prev,
       {
-        id: Date.now().toString(),
+        id: userMsgId,
         role: "user",
         content: `Uploaded work sample: ${file.name}`,
         imagePreviewUrl: url,
       },
     ]);
 
-    const assistantMessageId = (Date.now() + 1).toString();
     setMessages((prev) => [
       ...prev,
       {
-        id: assistantMessageId,
+        id: assistantMsgId,
         role: "assistant",
         content: "...", // Show loading indicator initially
       },
@@ -1177,7 +1181,7 @@ export default function Assistant() {
 
       setMessages((prev) =>
         prev.map((msg) =>
-          msg.id === assistantMessageId
+          msg.id === assistantMsgId
             ? { ...msg, content: result.feedback }
             : msg
         )
@@ -1187,7 +1191,7 @@ export default function Assistant() {
       if (voiceAutoPlay) {
         // Small delay to ensure message is rendered
         setTimeout(() => {
-          playMessage(assistantMessageId, result.feedback);
+          playMessage(assistantMsgId, result.feedback);
         }, 500);
       }
 
@@ -1200,7 +1204,7 @@ export default function Assistant() {
       console.error(e);
       setMessages((prev) =>
         prev.map((msg) =>
-          msg.id === assistantMessageId
+          msg.id === assistantMsgId
             ? {
                 ...msg,
                 content: "Sorry, I could not analyze the image. Please ensure the backend is running and try again.",
