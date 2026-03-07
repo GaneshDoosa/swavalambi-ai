@@ -322,9 +322,12 @@ export default function Assistant() {
 
   // Initialize language and voice preferences
   useEffect(() => {
-    const initializePreferences = async () => {
+    let isMounted = true;
+
+    const initializePreferencesAndHistory = async () => {
       const userId = localStorage.getItem("swavalambi_user_id");
-      
+      let resolvedLanguage = "";
+
       // Try to load from backend first if user is logged in
       if (userId) {
         try {
@@ -334,16 +337,15 @@ export default function Assistant() {
             
             // Load language preference from backend
             if (userData.preferred_language) {
-              setSelectedLanguage(userData.preferred_language);
-              localStorage.setItem("swavalambi_language", userData.preferred_language);
+              resolvedLanguage = userData.preferred_language;
+              setSelectedLanguage(resolvedLanguage);
+              localStorage.setItem("swavalambi_language", resolvedLanguage);
             } else {
               // Fallback to localStorage
               const storedLanguage = localStorage.getItem("swavalambi_language");
-              if (storedLanguage) {
-                setSelectedLanguage(storedLanguage);
-              } else {
-                // Show language selection modal on first visit
-                setShowLanguageModal(true);
+              if (storedLanguage && storedLanguage !== "null") {
+                resolvedLanguage = storedLanguage;
+                setSelectedLanguage(resolvedLanguage);
               }
             }
             
@@ -357,45 +359,174 @@ export default function Assistant() {
               if (storedVoiceAutoPlay !== null) {
                 setVoiceAutoPlay(storedVoiceAutoPlay === "true");
               } else {
-                // First time - enable by default
                 setVoiceAutoPlay(true);
                 localStorage.setItem("swavalambi_voice_autoplay", "true");
               }
             }
-            
-            // Trigger chat history load after preferences are loaded
-            setIsLoadingHistory(false);
-            return;
           }
         } catch (error) {
           console.error("Failed to load preferences from backend:", error);
         }
       }
       
-      // Fallback: Load from localStorage only
-      const storedLanguage = localStorage.getItem("swavalambi_language");
-      if (storedLanguage) {
-        setSelectedLanguage(storedLanguage);
-      } else {
-        setShowLanguageModal(true);
+      // Fallback: Load from localStorage only if backend didn't provide it
+      if (!resolvedLanguage) {
+        const storedLanguage = localStorage.getItem("swavalambi_language");
+        if (storedLanguage && storedLanguage !== "null") {
+          resolvedLanguage = storedLanguage;
+          setSelectedLanguage(resolvedLanguage);
+        }
+        
+        const storedVoiceAutoPlay = localStorage.getItem("swavalambi_voice_autoplay");
+        if (storedVoiceAutoPlay !== null) {
+          setVoiceAutoPlay(storedVoiceAutoPlay === "true");
+        } else {
+          setVoiceAutoPlay(true);
+          localStorage.setItem("swavalambi_voice_autoplay", "true");
+        }
       }
       
-      const storedVoiceAutoPlay = localStorage.getItem("swavalambi_voice_autoplay");
-      if (storedVoiceAutoPlay !== null) {
-        setVoiceAutoPlay(storedVoiceAutoPlay === "true");
-      } else {
-        setVoiceAutoPlay(true);
-        localStorage.setItem("swavalambi_voice_autoplay", "true");
+      // If NO language could be resolved, show the modal and stop.
+      if (!resolvedLanguage) {
+        if (isMounted) {
+          setShowLanguageModal(true);
+          setIsLoadingHistory(false);
+        }
+        return;
       }
       
-      // Trigger chat history load after preferences are loaded
-      setIsLoadingHistory(false);
+      // Now that we HAVE a resolved language, we can safely load chat history!
+      if (!isMounted) return;
+      loadChatHistoryData(userId, resolvedLanguage);
+    };
+
+    const loadChatHistoryData = async (userId: string | null, langCode: string) => {
+      // Check if this is a reassessment via navigation state or URL parameter
+      const isReassessment = location.state?.reassessment;
+      const urlParams = new URLSearchParams(window.location.search);
+      const hasReassessParam = urlParams.get('reassess') === 'true';
+
+      const storedName = localStorage.getItem("swavalambi_name") || "";
+      const userName = storedName && !/^\+?\d{7,}$/.test(storedName.trim()) ? storedName : "";
+      
+      if (isReassessment || hasReassessParam) {
+        setIsLoadingHistory(true);
+        if (userId) {
+          try {
+            await fetch(`${API_BASE}/users/${userId}/chat-history`, {
+              method: "DELETE",
+            });
+          } catch (error) {
+            console.error("Failed to clear chat history:", error);
+          }
+        }
+        
+        // Clear param from URL to prevent infinite re-clearing on refresh
+        if (hasReassessParam) {
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
+        
+        const greetingMessage = getGreeting(langCode, userName);
+        
+        setMessages([{ id: "msg-1", role: "assistant", content: "..." }]);
+        setIsLoadingHistory(false);
+        
+        setTimeout(() => {
+          if (isMounted) setMessages([{ id: "msg-1", role: "assistant", content: greetingMessage }]);
+          const autoPlay = localStorage.getItem("swavalambi_voice_autoplay");
+          if (autoPlay === "true" || autoPlay === null) {
+            playMessage("msg-1", greetingMessage);
+          }
+        }, 1200);
+        return;
+      }
+
+      if (!userId) {
+        const greetingMessage = getGreeting(langCode, userName);
+        
+        setMessages([{ id: "msg-1", role: "assistant", content: "..." }]);
+        setIsLoadingHistory(false);
+        
+        setTimeout(() => {
+          if (isMounted) setMessages([{ id: "msg-1", role: "assistant", content: greetingMessage }]);
+          const autoPlay = localStorage.getItem("swavalambi_voice_autoplay");
+          if (autoPlay === "true" || autoPlay === null) {
+            playMessage("msg-1", greetingMessage);
+          }
+        }, 1200);
+        return;
+      }
+
+      try {
+        const res = await fetch(`${API_BASE}/users/${userId}/chat-history`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.chat_history && Array.isArray(data.chat_history) && data.chat_history.length > 0) {
+            const loadedMessages: Message[] = data.chat_history.map((msg: any, idx: number) => ({
+              id: `loaded-${idx}`,
+              role: msg.role,
+              content: msg.content || "", // Ensure content is never undefined
+              imagePreviewUrl: msg.imagePreviewUrl,
+            }));
+            
+            if (isMounted) {
+              setMessages(loadedMessages);
+              console.log(`[INFO] Loaded ${loadedMessages.length} messages from history`);
+              setIsLoadingHistory(false);
+              
+              // Scroll to bottom after messages are loaded
+              setTimeout(() => {
+                messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+              }, 100);
+            }
+          } else {
+            // No chat history - show greeting and auto-play (only once)
+            const greetingMessage = getGreeting(langCode, userName);
+            
+            if (isMounted) {
+              setMessages([{ id: "msg-1", role: "assistant", content: "..." }]);
+              setIsLoadingHistory(false);
+              
+              setTimeout(() => {
+                if (isMounted) setMessages([{ id: "msg-1", role: "assistant", content: greetingMessage }]);
+                const autoPlay = localStorage.getItem("swavalambi_voice_autoplay");
+                if (autoPlay === "true" || autoPlay === null) {
+                  playMessage("msg-1", greetingMessage);
+                }
+              }, 1200);
+            }
+          }
+        } else {
+          throw new Error("Failed to load chat history");
+        }
+      } catch (error) {
+        console.error("Failed to load chat history:", error);
+        const greetingMessage = getGreeting(langCode, userName);
+        
+        if (isMounted) {
+          setMessages([{ id: "msg-1", role: "assistant", content: "..." }]);
+          setIsLoadingHistory(false);
+          
+          setTimeout(() => {
+            if (isMounted) setMessages([{ id: "msg-1", role: "assistant", content: greetingMessage }]);
+            const autoPlay = localStorage.getItem("swavalambi_voice_autoplay");
+            if (autoPlay === "true" || autoPlay === null) {
+              playMessage("msg-1", greetingMessage);
+            }
+          }, 1200);
+        }
+      }
     };
     
-    initializePreferences();
-  }, []);
+    initializePreferencesAndHistory();
+    
+    return () => {
+      isMounted = false;
+    };
+  }, []); // single initialization point
 
   // Toggle voice auto-play
+
   const toggleVoiceAutoPlay = () => {
     const newValue = !voiceAutoPlay;
     setVoiceAutoPlay(newValue);
@@ -446,27 +577,79 @@ export default function Assistant() {
     
     // Show greeting if messages are empty (first time OR reassessment)
     if (messages.length === 0) {
-      const greetingMessageId = "msg-1";
-      setMessages([{ id: greetingMessageId, role: "assistant", content: welcomeMessage }]);
-      
-      // Save greeting to chat history in DynamoDB
-      if (userId && !hasSavedInitialGreetingRef.current) {
-        hasSavedInitialGreetingRef.current = true;
-        const initialChat = [{ role: "assistant", content: welcomeMessage }];
-        fetch(`${API_BASE}/users/${userId}/chat-history`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ chat_history: initialChat })
-        }).catch(err => console.error("Failed to save greeting to chat history:", err));
-      }
-      
-      // Auto-play greeting if voice is enabled (only once)
-      if (voiceAutoPlay && !hasPlayedGreetingRef.current) {
-        hasPlayedGreetingRef.current = true;
-        // Small delay to ensure message is rendered
-        setTimeout(() => {
-          playMessage(greetingMessageId, welcomeMessage);
-        }, 500);
+      if (userId) {
+        setIsLoadingHistory(true);
+        fetch(`${API_BASE}/users/${userId}/chat-history`)
+          .then(res => res.ok ? res.json() : { chat_history: [] })
+          .then(data => {
+            if (data.chat_history && data.chat_history.length > 0) {
+              // User actually has history, don't overwrite it!
+              const loadedMessages = data.chat_history.map((msg: any, idx: number) => ({
+                id: `loaded-${idx}`,
+                role: msg.role,
+                content: msg.content || "",
+                imagePreviewUrl: msg.imagePreviewUrl,
+              }));
+              setMessages(loadedMessages);
+              
+              // Scroll to bottom after messages are loaded
+              setTimeout(() => {
+                messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+              }, 100);
+              setIsLoadingHistory(false);
+            } else {
+              // No history, safe to show and save greeting
+              const greetingMessageId = "msg-1";
+              
+              // Add minimal artificial delay to show the typing "..." animation
+              setMessages([{ id: greetingMessageId, role: "assistant", content: "..." }]);
+              setIsLoadingHistory(false);
+              
+              setTimeout(() => {
+                setMessages([{ id: greetingMessageId, role: "assistant", content: welcomeMessage }]);
+                
+                if (!hasSavedInitialGreetingRef.current) {
+                  hasSavedInitialGreetingRef.current = true;
+                  const initialChat = [{ role: "assistant", content: welcomeMessage }];
+                  fetch(`${API_BASE}/users/${userId}/chat-history`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ chat_history: initialChat })
+                  }).catch(err => console.error("Failed to save greeting to chat history:", err));
+                }
+                
+                if (voiceAutoPlay && !hasPlayedGreetingRef.current) {
+                  hasPlayedGreetingRef.current = true;
+                  setTimeout(() => playMessage(greetingMessageId, welcomeMessage), 500);
+                }
+              }, 1200);
+            }
+          })
+          .catch(err => {
+            console.error("Failed to load chat history on language select:", err);
+            // Fallback to greeting on error
+            const greetingMessageId = "msg-1";
+            setMessages([{ id: greetingMessageId, role: "assistant", content: "..." }]);
+            setIsLoadingHistory(false);
+            
+            setTimeout(() => {
+              setMessages([{ id: greetingMessageId, role: "assistant", content: welcomeMessage }]);
+              
+              if (voiceAutoPlay && !hasPlayedGreetingRef.current) {
+                hasPlayedGreetingRef.current = true;
+                setTimeout(() => playMessage(greetingMessageId, welcomeMessage), 500);
+              }
+            }, 1200);
+          });
+      } else {
+        // No user logged in
+        const greetingMessageId = "msg-1";
+        setMessages([{ id: greetingMessageId, role: "assistant", content: welcomeMessage }]);
+        
+        if (voiceAutoPlay && !hasPlayedGreetingRef.current) {
+          hasPlayedGreetingRef.current = true;
+          setTimeout(() => playMessage(greetingMessageId, welcomeMessage), 500);
+        }
       }
     }
   };
@@ -475,157 +658,7 @@ export default function Assistant() {
     return languages.find(lang => lang.code === selectedLanguage) || languages[0];
   };
 
-  // Load chat history on mount and when returning to this page
-  useEffect(() => {
-    let isMounted = true; // Prevent duplicate loading in React Strict Mode
-    
-    const loadChatHistory = async () => {
-      if (!isMounted) return; // Skip if already unmounted
-      
-      setIsLoadingHistory(true);
-      const userId = localStorage.getItem("swavalambi_user_id");
-      const storedName = localStorage.getItem("swavalambi_name") || "";
-      const userName = storedName && !/^\+?\d{7,}$/.test(storedName.trim()) ? storedName : "";
 
-      // Get language from localStorage directly
-      const currentLanguage = localStorage.getItem("swavalambi_language");
-      
-      // If no language selected yet, don't show greeting - language modal will appear
-      if (!currentLanguage) {
-        setIsLoadingHistory(false);
-        return;
-      }
-      
-      // Build welcome message in selected language
-      const buildWelcome = (name: string) => getGreeting(currentLanguage, name);
-      
-      // Check if this is a reassessment (explicit flag)
-      const isReassessment = sessionStorage.getItem("is_reassessment") === "true";
-      const urlParams = new URLSearchParams(window.location.search);
-      const hasReassessParam = urlParams.get("reassess") === "true";
-      
-      if (isReassessment || hasReassessParam) {
-        // This is a reassessment - start fresh
-        console.log("[INFO] Reassessment detected - starting fresh chat");
-        sessionStorage.removeItem("is_reassessment");
-        const greetingMessage = buildWelcome(userName);
-        setMessages([{ id: "msg-1", role: "assistant", content: greetingMessage }]);
-        
-        // Save greeting to DynamoDB for reassessment
-        if (userId && !hasSavedInitialGreetingRef.current) {
-          hasSavedInitialGreetingRef.current = true;
-          const initialChat = [{ role: "assistant", content: greetingMessage }];
-          fetch(`${API_BASE}/users/${userId}/chat-history`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ chat_history: initialChat })
-          }).catch(err => console.error("Failed to save reassessment greeting:", err));
-        }
-        
-        setIsLoadingHistory(false);
-        
-        // Auto-play greeting if voice is enabled (only once)
-        const storedVoiceAutoPlay = localStorage.getItem("swavalambi_voice_autoplay");
-        const shouldAutoPlay = storedVoiceAutoPlay === null || storedVoiceAutoPlay === "true";
-        if (shouldAutoPlay && !hasPlayedGreetingRef.current) {
-          hasPlayedGreetingRef.current = true;
-          setTimeout(() => {
-            playMessage("msg-1", greetingMessage);
-          }, 500);
-        }
-        return;
-      }
-      
-      if (!userId) {
-        const greetingMessage = buildWelcome(userName);
-        setMessages([{ id: "msg-1", role: "assistant", content: greetingMessage }]);
-        setIsLoadingHistory(false);
-        
-        // Auto-play greeting if voice is enabled (only once)
-        const storedVoiceAutoPlay = localStorage.getItem("swavalambi_voice_autoplay");
-        const shouldAutoPlay = storedVoiceAutoPlay === null || storedVoiceAutoPlay === "true";
-        if (shouldAutoPlay && !hasPlayedGreetingRef.current) {
-          hasPlayedGreetingRef.current = true;
-          setTimeout(() => {
-            playMessage("msg-1", greetingMessage);
-          }, 500);
-        }
-        return;
-      }
-
-      try {
-        const res = await fetch(`${API_BASE}/users/${userId}/chat-history`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.chat_history && data.chat_history.length > 0) {
-            const loadedMessages: Message[] = data.chat_history.map((msg: any, idx: number) => ({
-              id: `loaded-${idx}`,
-              role: msg.role,
-              content: msg.content || "", // Ensure content is never undefined
-              imagePreviewUrl: msg.imagePreviewUrl,
-            }));
-            setMessages(loadedMessages);
-            console.log(`[INFO] Loaded ${loadedMessages.length} messages from history`);
-            
-            // Scroll to bottom after messages are loaded
-            setTimeout(() => {
-              messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-            }, 100);
-          } else {
-            // No chat history - show greeting and auto-play (only once)
-            const greetingMessage = buildWelcome(userName);
-            setMessages([{ id: "msg-1", role: "assistant", content: greetingMessage }]);
-            
-            // Auto-play greeting if voice is enabled
-            const storedVoiceAutoPlay = localStorage.getItem("swavalambi_voice_autoplay");
-            const shouldAutoPlay = storedVoiceAutoPlay === null || storedVoiceAutoPlay === "true";
-            if (shouldAutoPlay && !hasPlayedGreetingRef.current) {
-              hasPlayedGreetingRef.current = true;
-              setTimeout(() => {
-                playMessage("msg-1", greetingMessage);
-              }, 500);
-            }
-          }
-        } else {
-          // Error loading - show greeting and auto-play (only once)
-          const greetingMessage = buildWelcome(userName);
-          setMessages([{ id: "msg-1", role: "assistant", content: greetingMessage }]);
-          
-          // Auto-play greeting if voice is enabled
-          const storedVoiceAutoPlay = localStorage.getItem("swavalambi_voice_autoplay");
-          const shouldAutoPlay = storedVoiceAutoPlay === null || storedVoiceAutoPlay === "true";
-          if (shouldAutoPlay && !hasPlayedGreetingRef.current) {
-            hasPlayedGreetingRef.current = true;
-            setTimeout(() => {
-              playMessage("msg-1", greetingMessage);
-            }, 500);
-          }
-        }
-      } catch (error) {
-        console.error("Failed to load chat history:", error);
-        const greetingMessage = buildWelcome(userName);
-        setMessages([{ id: "msg-1", role: "assistant", content: greetingMessage }]);
-        
-        // Auto-play greeting if voice is enabled (only once)
-        const storedVoiceAutoPlay = localStorage.getItem("swavalambi_voice_autoplay");
-        const shouldAutoPlay = storedVoiceAutoPlay === null || storedVoiceAutoPlay === "true";
-        if (shouldAutoPlay && !hasPlayedGreetingRef.current) {
-          hasPlayedGreetingRef.current = true;
-          setTimeout(() => {
-            playMessage("msg-1", greetingMessage);
-          }, 500);
-        }
-      } finally {
-        setIsLoadingHistory(false);
-      }
-    };
-
-    loadChatHistory();
-    
-    return () => {
-      isMounted = false; // Cleanup flag on unmount
-    };
-  }, [location.pathname]); // Only reload when navigating back, not on language change
 
   useEffect(() => {
     // Scroll to bottom when messages change, with a small delay to ensure rendering is complete
@@ -657,6 +690,7 @@ export default function Assistant() {
     setIsLoadingAudio(messageId);
 
     try {
+      const startTime = performance.now();
       const response = await fetch(`${API_BASE}/voice/synthesize`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -669,6 +703,9 @@ export default function Assistant() {
       if (!response.ok) throw new Error("TTS API failed");
 
       const data = await response.json();
+      const endTime = performance.now();
+      console.log(`[TTS Latency] Synthesizing audio took ${(endTime - startTime).toFixed(2)} ms`);
+      
       const audio = new Audio(
         `data:audio/${data.audio_format};base64,${data.audio_base64}`
       );
@@ -987,8 +1024,8 @@ export default function Assistant() {
                 });
 
                 // Auto-play voice if enabled (play complete response)
-                if (voiceAutoPlay && streamedContent) {
-                  playMessage(assistantMessageId, streamedContent);
+                if (voiceAutoPlay && finalContent) {
+                  playMessage(assistantMessageId, finalContent);
                 }
 
                 // Cache extracted profile fields
@@ -1272,6 +1309,7 @@ export default function Assistant() {
 
   const sendVoiceMessageNonStreaming = async (audioBlob: Blob) => {
     try {
+      const startTime = performance.now();
       const formData = new FormData();
       formData.append('audio', audioBlob, 'recording.webm');
       formData.append('session_id', sessionId);
@@ -1287,6 +1325,8 @@ export default function Assistant() {
 
       if (!res.ok) throw new Error(`Voice API error: ${res.status}`);
       const data = await res.json();
+      const endTime = performance.now();
+      console.log(`[STT Latency] Non-streaming STT & Response generation took ${(endTime - startTime).toFixed(2)} ms`);
 
       // Add user message
       setMessages((prev) => [
@@ -1344,6 +1384,7 @@ export default function Assistant() {
     const assistantMsgId = `assistant-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
     try {
+      const startTime = performance.now();
       const formData = new FormData();
       formData.append('audio', audioBlob, 'recording.webm');
       formData.append('session_id', sessionId);
@@ -1393,6 +1434,9 @@ export default function Assistant() {
                 if (data.type === "transcription") {
                   // Add user message once
                   if (!userMessageAdded) {
+                    const sttEndTime = performance.now();
+                    console.log(`[STT Latency] Streaming STT transcribed user voice in ${(sttEndTime - startTime).toFixed(2)} ms`);
+                    
                     setMessages((prev) => [
                       ...prev,
                       {
@@ -1436,6 +1480,9 @@ export default function Assistant() {
                   // Complete audio received - play it if voice is enabled
                   if (voiceAutoPlay && data.audio_base64) {
                     try {
+                      const audioEndTime = performance.now();
+                      console.log(`[TTS Latency] Streaming TTS generation took ${(audioEndTime - startTime).toFixed(2)} ms from microphone submission`);
+                      
                       const audio = new Audio(
                         `data:audio/${data.audio_format};base64,${data.audio_base64}`
                       );
@@ -1762,8 +1809,30 @@ export default function Assistant() {
         </div>
 
         {/* Loading history indicator */}
-        {isLoadingHistory && (
-          <div className="flex items-center justify-center gap-2 text-slate-500 text-sm">
+        {isLoadingHistory && messages.length === 0 && (
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-white shrink-0 shadow-lg shadow-primary/20">
+              <Bot className="fill-current" />
+            </div>
+            <div className="flex flex-col gap-1 flex-1">
+              <p className="text-[11px] font-semibold uppercase text-primary ml-1">
+                Assistant
+              </p>
+              <div className="flex items-end gap-2">
+                <div className="p-4 rounded-xl shadow-sm border bg-white text-slate-900 rounded-tl-none border-slate-100 max-w-[calc(100%-3rem)]">
+                  <div className="flex items-center gap-1 py-1">
+                    <div className="w-2 h-2 bg-primary/60 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                    <div className="w-2 h-2 bg-primary/60 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                    <div className="w-2 h-2 bg-primary/60 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isLoadingHistory && messages.length > 0 && (
+          <div className="flex items-center justify-center gap-2 text-slate-500 text-sm mb-4">
             <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
             Loading conversation history...
           </div>

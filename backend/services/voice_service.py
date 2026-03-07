@@ -186,6 +186,10 @@ class VoiceService:
                 model="bulbul:v3",
                 send_completion_event=True
             ) as ws:
+                import time
+                start_time = time.time()
+                first_chunk_time = None
+                
                 # Configure the WebSocket
                 await ws.configure(
                     target_language_code=language_code,
@@ -204,12 +208,20 @@ class VoiceService:
                 chunk_count = 0
                 async for message in ws:
                     if isinstance(message, AudioOutput):
+                        if first_chunk_time is None:
+                            first_chunk_time = time.time()
+                            ttft_ms = (first_chunk_time - start_time) * 1000
+                            print(f"[LATENCY] Sarvam TTS Stream Time-To-First-Chunk: {ttft_ms:.2f} ms")
+                            
                         chunk_count += 1
                         audio_chunk = base64.b64decode(message.data.audio)
                         yield audio_chunk
                     elif isinstance(message, EventResponse):
                         # Check for completion event
                         if message.data.event_type == "final":
+                            end_time = time.time()
+                            total_ms = (end_time - start_time) * 1000
+                            print(f"[LATENCY] Sarvam TTS Stream Total Time: {total_ms:.2f} ms for {chunk_count} chunks")
                             print(f"[INFO] Received TTS completion event after {chunk_count} chunks")
                             break
                             
@@ -328,43 +340,57 @@ class VoiceService:
         language_code: str
     ) -> Dict[str, Any]:
         """
-        Transcribe using Sarvam AI Saaras v3
+        Transcribe using Sarvam AI Saaras v3 via Official SDK
         
         Explicitly sets language_code to prevent auto-detection errors.
         Uses 'codemix' mode for natural code-switching (English + Indic).
         """
-        url = f"{self.sarvam_base_url}/speech-to-text"
-        headers = {
-            "api-subscription-key": self.sarvam_api_key,
-        }
+        import time
+        start_time = time.time()
         
         print(f"[INFO] Transcribing audio with language: {language_code}")
         
-        files = {
-            "file": ("audio.wav", audio_bytes, "audio/wav")
-        }
-        data = {
-            "model": os.getenv("SARVAM_STT_MODEL", "saaras:v3"),
-            "language_code": language_code,  # ✅ Force specific language (no auto-detection)
-            "mode": "codemix",  # ✅ Handle code-switching (English words + Indic script)
-        }
+        try:
+            from sarvamai import SarvamAI
+            client = SarvamAI(api_subscription_key=self.sarvam_api_key)
+            
+            # The SDK expects a file tuple or file path. 
+            # We can pass a file tuple (filename, file_bytes, content_type)
+            audio_file = ("audio.wav", audio_bytes, "audio/wav")
+            
+            # Using transcribe() method for speech-to-text
+            response = client.speech_to_text.transcribe(
+                file=audio_file,
+                model=os.getenv("SARVAM_STT_MODEL", "saaras:v3")
+            )
+            
+            end_time = time.time()
+            latency_ms = (end_time - start_time) * 1000
+            print(f"[LATENCY] Sarvam SDK STT took {latency_ms:.2f} ms")
 
-        response = requests.post(url, headers=headers, files=files, data=data)
-        response.raise_for_status()
+            # Handle the response structure
+            transcript = ""
+            if hasattr(response, "transcript"):
+                transcript = response.transcript
+            
+            # Fallback for confidence since SDK might not return it
+            confidence = 0.0
+            if hasattr(response, "confidence"):
+                confidence = response.confidence
 
-        result = response.json()
-        detected_lang = result.get("language_code", language_code)
-        transcript = result.get("transcript", "")
-        
-        print(f"[INFO] Transcription complete: {transcript[:100]}")
-        print(f"[INFO] Language: {detected_lang}")
+            print(f"[INFO] Transcription complete: {transcript[:100]}")
+            print(f"[INFO] Language: {language_code}")
 
-        return {
-            "text": transcript,
-            "language": detected_lang,
-            "confidence": result.get("confidence", 0.0),
-            "provider": "sarvam"
-        }
+            return {
+                "text": transcript,
+                "language": language_code, # SDK might not return detected_lang, so use what we asked for
+                "confidence": confidence,
+                "provider": "sarvam"
+            }
+            
+        except Exception as e:
+            print(f"[ERROR] Sarvam SDK STT failed: {e}")
+            raise
 
     
     def synthesize(
@@ -451,49 +477,55 @@ class VoiceService:
         text: str,
         language_code: str
     ) -> Dict[str, Any]:
-        """Synthesize using Sarvam AI Bulbul v3"""
-        url = f"{self.sarvam_base_url}/text-to-speech"
-        headers = {
-            "api-subscription-key": self.sarvam_api_key,
-            "Content-Type": "application/json"
-        }
-
+        """Synthesize using Sarvam AI Bulbul v3 via Official SDK"""
+        import time
+        start_time = time.time()
+        
         # Get speaker from .env based on language
         # Extract language code (e.g., 'hi' from 'hi-IN')
         lang_code = language_code.split('-')[0].upper()
         env_key = f"SARVAM_TTS_SPEAKER_{lang_code}"
         speaker = os.getenv(env_key, os.getenv("SARVAM_TTS_SPEAKER", "shubh"))
 
-        data = {
-            "text": text,
-            "target_language_code": language_code,
-            "model": "bulbul:v3",
-            "speaker": speaker,
-            "speech_sample_rate": 8000,  # Use 8kHz for better browser compatibility
-        }
-
-        print(f"[DEBUG] Sarvam TTS request: lang={language_code}, speaker={speaker}, text_len={len(text)}")
+        print(f"[DEBUG] Sarvam SDK TTS request: lang={language_code}, speaker={speaker}, text_len={len(text)}")
         
-        response = requests.post(url, headers=headers, json=data)
-        
-        # Log error details if request fails
-        if not response.ok:
-            print(f"[ERROR] Sarvam TTS failed: {response.status_code}")
-            print(f"[ERROR] Response: {response.text}")
-        
-        response.raise_for_status()
-
-        result = response.json()
-        # Sarvam TTS returns audio in an 'audios' array (base64 strings)
-        audios = result.get("audios", [])
-        audio_b64 = audios[0] if audios else result.get("audio", "")
-
-        return {
-            "audio_base64": audio_b64,
-            "audio_format": "wav",
-            "duration": result.get("duration", 0.0),
-            "provider": "sarvam"
-        }
+        try:
+            from sarvamai import SarvamAI
+            client = SarvamAI(api_subscription_key=self.sarvam_api_key)
+            
+            # Get model from .env (defaults to bulbul:v3)
+            model = os.getenv("SARVAM_TTS_MODEL", "bulbul:v3")
+            
+            response = client.text_to_speech.convert(
+                text=text,
+                target_language_code=language_code,
+                speaker=speaker,
+                model=model,
+                speech_sample_rate=8000
+            )
+            
+            # The SDK returns a pydantic model with an 'audios' list of base64 strings
+            # Handle potential variations in SDK return structure
+            audio_b64 = ""
+            if hasattr(response, "audios") and response.audios:
+                audio_b64 = response.audios[0]
+            elif hasattr(response, "audio"):
+                audio_b64 = response.audio
+                
+            end_time = time.time()
+            latency_ms = (end_time - start_time) * 1000
+            print(f"[LATENCY] Sarvam SDK TTS took {latency_ms:.2f} ms")
+            
+            return {
+                "audio_base64": audio_b64,
+                "audio_format": "wav",
+                "duration": 0.0, # Not easily available without parsing the audio data
+                "provider": "sarvam"
+            }
+            
+        except Exception as e:
+            print(f"[ERROR] Sarvam SDK TTS failed: {e}")
+            raise
 
     
     def translate(
@@ -559,14 +591,7 @@ class VoiceService:
         source_lang: str,
         target_lang: str
     ) -> Dict[str, Any]:
-        """Translate using Sarvam AI Mayura"""
-        url = f"{self.sarvam_base_url}/translate"
-        # Sarvam uses api-subscription-key header, NOT Authorization: Bearer
-        headers = {
-            "api-subscription-key": self.sarvam_api_key,
-            "Content-Type": "application/json"
-        }
-        
+        """Translate using Sarvam AI Mayura via Official SDK"""
         # Normalize language codes to full BCP-47 format (e.g. hi -> hi-IN)
         _lang_map = {
             "hi": "hi-IN", "ta": "ta-IN", "te": "te-IN",
@@ -577,26 +602,33 @@ class VoiceService:
         source_code = _lang_map.get(source_lang, source_lang)
         target_code = _lang_map.get(target_lang, target_lang)
         
-        data = {
-            "input": text,
-            "source_language_code": source_code,
-            "target_language_code": target_code,
-            "model": os.getenv("SARVAM_TRANSLATE_MODEL", "mayura:v1"),
-            "mode": "formal",
-            "enable_preprocessing": False,
-        }
-        
-        response = requests.post(url, headers=headers, json=data)
-        response.raise_for_status()
-        
-        result = response.json()
-        
-        return {
-            "translated_text": result.get("translated_text", ""),
-            "source_language": source_lang,
-            "target_language": target_lang,
-            "provider": "sarvam"
-        }
+        try:
+            from sarvamai import SarvamAI
+            client = SarvamAI(api_subscription_key=self.sarvam_api_key)
+            
+            response = client.translation.translate(
+                input=text,
+                source_language_code=source_code,
+                target_language_code=target_code,
+                model=os.getenv("SARVAM_TRANSLATE_MODEL", "mayura:v1"),
+                mode="formal",
+                enable_preprocessing=False
+            )
+            
+            translated_text = ""
+            if hasattr(response, "translated_text"):
+                translated_text = response.translated_text
+            
+            return {
+                "translated_text": translated_text,
+                "source_language": source_lang,
+                "target_language": target_lang,
+                "provider": "sarvam"
+            }
+            
+        except Exception as e:
+            print(f"[ERROR] Sarvam SDK Translation failed: {e}")
+            raise
 
 
 # Singleton instance

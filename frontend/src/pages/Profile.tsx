@@ -129,7 +129,7 @@ export default function Profile() {
     await new Promise(resolve => setTimeout(resolve, 500));
     
     // Force full page reload to ensure clean state
-    window.location.href = "/assistant?reassess=true";
+    window.location.href = "/assistant";
   };
 
   useEffect(() => {
@@ -311,16 +311,16 @@ export default function Profile() {
               <button
                 onClick={() => {
                   if (skillRating === 0) {
-                    // First time assessment, no warning needed
-                    handleReassessment();
+                    // Just take them to the chat so they can start or resume their partial assessment!
+                    navigate('/assistant');
                   } else {
-                    // Show warning for reassessment
+                    // Show warning for reassessment which will wipe their level
                     setShowReassessmentWarning(true);
                   }
                 }}
                 className="flex-1 text-center bg-primary hover:bg-primary-dark text-white font-bold py-3 rounded-xl shadow-md shadow-primary/20 transition-colors text-sm"
               >
-                {skillRating === 0 ? 'Start Assessment' : 'Retake Assessment'}
+                {skillRating === 0 ? 'Start / Resume Assessment' : 'Retake Assessment'}
               </button>
               <button className="flex-1 bg-primary/10 hover:bg-primary/20 text-primary font-bold py-3 rounded-xl border border-primary/20 transition-colors text-sm">
                 Share Profile

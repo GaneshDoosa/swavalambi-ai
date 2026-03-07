@@ -4,7 +4,10 @@ from schemas.models import ChatRequest, ChatResponse
 from agents.profiling_agent import ProfilingAgent
 from services.dynamodb_service import update_chat_history
 from common.agent_sessions import get_agent_session, set_agent_session, has_agent_session
+import asyncio
 import warnings
+import logging
+import sys
 import os
 import json
 
@@ -12,6 +15,14 @@ import json
 # These warnings occur because Strands uses complex internal message structures
 # but we're already converting everything to simple types (str, bool, int)
 warnings.filterwarnings("ignore", category=UserWarning, module="pydantic.main")
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+if not logger.handlers:
+    _handler = logging.StreamHandler(sys.stdout)
+    _handler.setFormatter(logging.Formatter("[%(levelname)s] routes_chat: %(message)s"))
+    logger.addHandler(_handler)
+logger.propagate = False
 
 router = APIRouter()
 
@@ -34,7 +45,7 @@ async def chat_profile(request: ChatRequest):
                 if user_data and "preferred_language" in user_data:
                     preferred_language = user_data["preferred_language"]
             except Exception as e:
-                print(f"[WARN] Failed to get preferred language: {e}")
+                logger.warning("Failed to get preferred language: %s", e)
         
         set_agent_session(request.session_id, ProfilingAgent(
             session_id=request.session_id,
@@ -60,10 +71,10 @@ async def chat_profile(request: ChatRequest):
                         })
                     # Set the agent's messages
                     get_agent_session(request.session_id).agent.messages = restored_messages
-                    print(f"[INFO] Restored {len(chat_history)} messages from DynamoDB for user {request.user_id}")
+                    logger.info("Restored %d messages from DynamoDB for user %s", len(chat_history), request.user_id)
                     chat_restored = True
             except Exception as e:
-                print(f"[WARN] Failed to restore chat history: {e}")
+                logger.warning("Failed to restore chat history: %s", e)
         
         # If this is a new session and no chat was restored, initialize with greeting
         # Generate greeting based on user's preferred language
@@ -130,31 +141,33 @@ async def chat_profile(request: ChatRequest):
                 # Initialize chat history with greeting
                 initial_chat = [{"role": "assistant", "content": greeting}]
                 update_chat_history(request.user_id, initial_chat)
-                print(f"[INFO] Initialized chat history with {preferred_language} greeting for user {request.user_id}")
+                logger.info("Initialized chat history with %s greeting for user %s", preferred_language, request.user_id)
                 
                 # CRITICAL: Also seed the greeting into agent.messages so it is
                 # included in every subsequent DynamoDB save (not just the first one)
                 get_agent_session(request.session_id).agent.messages = [
                     {"role": "assistant", "content": [{"text": greeting}]}
                 ]
-                print(f"[INFO] Seeded greeting into agent.messages to prevent overwrite")
+                logger.info("Seeded greeting into agent.messages to prevent overwrite")
             except Exception as e:
-                print(f"[WARN] Failed to initialize chat history: {e}")
+                logger.warning("Failed to initialize chat history: %s", e)
         
     agent = get_agent_session(request.session_id)
     
     try:
-        # Get response from the Strands LLM
-        result = agent.run(request.message)
+        # Get response from the Strands LLM — run blocking sync call in thread pool
+        # to prevent freezing the event loop (which blocks all other requests)
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, lambda: agent.run(request.message))
         
         # Save chat history to DynamoDB if user_id is provided
         if request.user_id:
             try:
-                print(f"[DEBUG] Attempting to save chat history for user {request.user_id}")
+                logger.debug("Attempting to save chat history for user %s", request.user_id)
                 # Strands Agent stores conversation history in agent.messages
                 if hasattr(agent.agent, "messages") and agent.agent.messages:
                     raw_messages = agent.agent.messages
-                    print(f"[DEBUG] Found {len(raw_messages)} raw messages in agent.messages")
+                    logger.debug("Found %d raw messages in agent.messages", len(raw_messages))
                     # Serialize messages for DynamoDB storage
                     serialized_chat = []
                     
@@ -162,7 +175,7 @@ async def chat_profile(request: ChatRequest):
                         role = None
                         content_str = ""
                         
-                        print(f"[DEBUG] Processing message {idx}: type={type(msg)}")
+                        logger.debug("Processing message %d: type=%s", idx, type(msg))
                         
                         # Extract role
                         if isinstance(msg, dict):
@@ -172,14 +185,14 @@ async def chat_profile(request: ChatRequest):
                             role = msg.role
                             content = msg.content if hasattr(msg, "content") else None
                         else:
-                            print(f"[DEBUG] Message {idx} has no role attribute, skipping")
+                            logger.debug("Message %d has no role attribute, skipping", idx)
                             continue
                         
                         if not role:
-                            print(f"[DEBUG] Message {idx} has empty role, skipping")
+                            logger.debug("Message %d has empty role, skipping", idx)
                             continue
                         
-                        print(f"[DEBUG] Message {idx} role={role}, content type={type(content)}")
+                        logger.debug("Message %d role=%s, content type=%s", idx, role, type(content))
                         
                         # Extract text from content (handle various formats)
                         if content is None:
@@ -205,12 +218,12 @@ async def chat_profile(request: ChatRequest):
                             # Fallback: convert to string
                             content_str = str(content)
                         
-                        print(f"[DEBUG] Message {idx} extracted content length: {len(content_str)}")
+                        logger.debug("Message %d extracted content length: %d", idx, len(content_str))
                         
                         # IMPORTANT: Strip out PROFILE_DATA markers before saving to chat history
                         # These markers are for backend parsing only and should not be shown to users
                         if "PROFILE_DATA_START" in content_str and "PROFILE_DATA_END" in content_str:
-                            print(f"[DEBUG] Found PROFILE_DATA markers in message {idx}, stripping them out")
+                            logger.debug("Found PROFILE_DATA markers in message %d, stripping them out", idx)
                             start_marker = "PROFILE_DATA_START"
                             end_marker = "PROFILE_DATA_END"
                             start_idx = content_str.find(start_marker)
@@ -222,7 +235,7 @@ async def chat_profile(request: ChatRequest):
                             
                             # Combine the parts, keeping only the user-facing message
                             content_str = (content_before + "\n\n" + content_after).strip()
-                            print(f"[DEBUG] Stripped PROFILE_DATA, new content length: {len(content_str)}")
+                            logger.debug("Stripped PROFILE_DATA, new content length: %d", len(content_str))
                         
                         if content_str:  # Only add if we have content
                             serialized_chat.append({
@@ -230,35 +243,35 @@ async def chat_profile(request: ChatRequest):
                                 "content": content_str
                             })
                     
-                    print(f"[DEBUG] Serialized {len(serialized_chat)} messages")
+                    logger.debug("Serialized %d messages", len(serialized_chat))
                     
                     if serialized_chat:
                         update_chat_history(request.user_id, serialized_chat)
-                        print(f"[INFO] Saved {len(serialized_chat)} messages to DynamoDB for user {request.user_id}")
+                        logger.info("Saved %d messages to DynamoDB for user %s", len(serialized_chat), request.user_id)
                     else:
-                        print(f"[WARN] No messages to save - serialized_chat is empty")
+                        logger.warning("No messages to save - serialized_chat is empty")
                 else:
-                    print(f"[WARN] Agent has no messages attribute or messages is empty")
+                    logger.warning("Agent has no messages attribute or messages is empty")
             except Exception as e:
-                print(f"[WARN] Failed to persist chat history to DynamoDB: {e}")
+                logger.warning("Failed to persist chat history to DynamoDB: %s", e)
                 import traceback
                 traceback.print_exc()
         
         # Save profile assessment data if complete
         if request.user_id and result.get("profile_data"):
             try:
-                print(f"[INFO] Profile data detected, saving to DynamoDB...")
-                print(f"[INFO] Profile data content: {result['profile_data']}")
+                logger.info("Profile data detected, saving to DynamoDB...")
+                logger.info("Profile data content: %s", result['profile_data'])
                 from services.dynamodb_service import save_profile_assessment
                 save_profile_assessment(request.user_id, result["profile_data"])
-                print(f"[INFO] Successfully saved profile assessment for user {request.user_id}")
+                logger.info("Successfully saved profile assessment for user %s", request.user_id)
             except Exception as e:
-                print(f"[ERROR] Failed to save profile assessment: {e}")
+                logger.error("Failed to save profile assessment: %s", e)
                 import traceback
                 traceback.print_exc()
         else:
             if request.user_id:
-                print(f"[DEBUG] No profile_data in result for user {request.user_id}. Result keys: {result.keys()}")
+                logger.debug("No profile_data in result for user %s. Result keys: %s", request.user_id, list(result.keys()))
                 
         # Return response - ensure all values are JSON-serializable
         # Create a clean response object with explicit type conversion
@@ -273,7 +286,7 @@ async def chat_profile(request: ChatRequest):
             location_extracted=str(result["location_extracted"]) if result.get("location_extracted") else None,
         )
     except Exception as e:
-        print(f"Agent error: {e}")
+        logger.error("Agent error: %s", e)
         raise HTTPException(status_code=500, detail="Failed to communicate with AI Gateway.")
 
 
@@ -305,7 +318,7 @@ async def chat_profile_stream(request: ChatRequest):
                 if user_data and "preferred_language" in user_data:
                     preferred_language = user_data["preferred_language"]
             except Exception as e:
-                print(f"[WARN] Failed to get preferred language: {e}")
+                logger.warning("Failed to get preferred language: %s", e)
         
         set_agent_session(request.session_id, ProfilingAgent(
             session_id=request.session_id,
@@ -328,10 +341,10 @@ async def chat_profile_stream(request: ChatRequest):
                             "content": [{"text": msg["content"]}]
                         })
                     get_agent_session(request.session_id).agent.messages = restored_messages
-                    print(f"[INFO] Restored {len(chat_history)} messages for streaming session")
+                    logger.info("Restored %d messages for streaming session", len(chat_history))
                     chat_restored = True
             except Exception as e:
-                print(f"[WARN] Failed to restore chat history: {e}")
+                logger.warning("Failed to restore chat history: %s", e)
         
         # Initialize greeting if needed (same as non-streaming)
         if not chat_restored and request.user_id:
@@ -366,15 +379,15 @@ async def chat_profile_stream(request: ChatRequest):
                 
                 initial_chat = [{"role": "assistant", "content": greeting}]
                 update_chat_history(request.user_id, initial_chat)
-                print(f"[INFO] Initialized streaming chat with {preferred_language} greeting")
+                logger.info("Initialized streaming chat with %s greeting", preferred_language)
                 
                 # CRITICAL: Seed greeting into agent.messages to prevent overwrite on first save
                 get_agent_session(request.session_id).agent.messages = [
                     {"role": "assistant", "content": [{"text": greeting}]}
                 ]
-                print(f"[INFO] Seeded greeting into streaming agent.messages")
+                logger.info("Seeded greeting into streaming agent.messages")
             except Exception as e:
-                print(f"[WARN] Failed to initialize greeting: {e}")
+                logger.warning("Failed to initialize greeting: %s", e)
     
     agent = get_agent_session(request.session_id)
     
@@ -452,18 +465,18 @@ async def chat_profile_stream(request: ChatRequest):
                         
                         if serialized_chat:
                             save_history(request.user_id, serialized_chat)
-                            print(f"[INFO] Saved {len(serialized_chat)} messages to DynamoDB")
+                            logger.info("Saved %d messages to DynamoDB", len(serialized_chat))
                 except Exception as e:
-                    print(f"[WARN] Failed to save chat history: {e}")
+                    logger.warning("Failed to save chat history: %s", e)
             
             # Save profile assessment if complete
             if request.user_id and result.get("profile_data"):
                 try:
                     from services.dynamodb_service import save_profile_assessment
                     save_profile_assessment(request.user_id, result["profile_data"])
-                    print(f"[INFO] Saved profile assessment for user {request.user_id}")
+                    logger.info("Saved profile assessment for user %s", request.user_id)
                 except Exception as e:
-                    print(f"[ERROR] Failed to save profile assessment: {e}")
+                    logger.error("Failed to save profile assessment: %s", e)
             
             # Send final metadata
             final_data = {
@@ -480,7 +493,7 @@ async def chat_profile_stream(request: ChatRequest):
             yield f"data: {json.dumps(final_data)}\n\n"
             
         except Exception as e:
-            print(f"[ERROR] Streaming error: {e}")
+            logger.error("Streaming error: %s", e)
             error_data = {"error": str(e), "done": True}
             yield f"data: {json.dumps(error_data)}\n\n"
     

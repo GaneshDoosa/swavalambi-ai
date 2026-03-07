@@ -8,10 +8,18 @@ from pydantic import BaseModel
 from services.voice_service import get_voice_service
 from agents.profiling_agent import ProfilingAgent
 from common.agent_sessions import get_agent_session, set_agent_session, has_agent_session
+import asyncio
 import logging
 import os
+import sys
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+if not logger.handlers:
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(logging.Formatter("[%(levelname)s] routes_voice: %(message)s"))
+    logger.addHandler(handler)
+logger.propagate = False
 
 router = APIRouter()
 
@@ -60,12 +68,16 @@ async def transcribe_audio(
         if audio_format not in ["wav", "mp3", "webm", "ogg"]:
             audio_format = "wav"  # Default
         
-        # Transcribe
+        # Transcribe — run blocking sync call in a thread pool to avoid blocking the event loop
+        loop = asyncio.get_event_loop()
         voice_service = get_voice_service()
-        result = voice_service.transcribe(
-            audio_bytes=audio_bytes,
-            language_code=language,
-            audio_format=audio_format
+        result = await loop.run_in_executor(
+            None,
+            lambda: voice_service.transcribe(
+                audio_bytes=audio_bytes,
+                language_code=language,
+                audio_format=audio_format
+            )
         )
         
         logger.info("Transcribed audio for user %s: %s...", user_id, result['text'][:50])
@@ -85,11 +97,16 @@ async def synthesize_speech(request: SynthesizeRequest):
     Returns base64-encoded audio
     """
     try:
+        # Synthesize — run blocking sync call in a thread pool to avoid blocking the event loop
+        loop = asyncio.get_event_loop()
         voice_service = get_voice_service()
-        result = voice_service.synthesize(
-            text=request.text,
-            language_code=request.language,
-            voice_id=request.voice_id
+        result = await loop.run_in_executor(
+            None,
+            lambda: voice_service.synthesize(
+                text=request.text,
+                language_code=request.language,
+                voice_id=request.voice_id
+            )
         )
         
         logger.info("Synthesized speech: %s...", request.text[:50])
@@ -146,17 +163,21 @@ async def voice_chat(
     
     # Original non-streaming implementation
     try:
-        # Step 1: Transcribe audio
+        # Step 1: Transcribe audio — run blocking sync call in thread pool
         audio_bytes = await audio.read()
         audio_format = audio.filename.split(".")[-1].lower()
         if audio_format not in ["wav", "mp3", "webm", "ogg"]:
             audio_format = "wav"
         
+        loop = asyncio.get_event_loop()
         voice_service = get_voice_service()
-        transcription = voice_service.transcribe(
-            audio_bytes=audio_bytes,
-            language_code=language,
-            audio_format=audio_format
+        transcription = await loop.run_in_executor(
+            None,
+            lambda: voice_service.transcribe(
+                audio_bytes=audio_bytes,
+                language_code=language,
+                audio_format=audio_format
+            )
         )
         
         user_text = transcription["text"]
@@ -275,8 +296,8 @@ async def voice_chat(
                     logger.warning("Failed to initialize voice chat greeting: %s", e)
                     
         agent = get_agent_session(session_id)
-        # Send user's original language text directly to LLM (no translation needed)
-        result = agent.run(user_text)
+        # Send user's original language text directly to LLM — run blocking call in thread pool
+        result = await loop.run_in_executor(None, lambda: agent.run(user_text))
         # LLM responds in user's language (based on system prompt and input language)
         response_text = result["response"]
         logger.info("Agent response (%s): %s...", language, response_text[:100])
@@ -345,10 +366,13 @@ async def voice_chat(
             except Exception as e:
                 logger.warning("Failed to save profile assessment: %s", e)
         
-        # Step 4: Synthesize response to speech (response is already in user's language)
-        synthesis = voice_service.synthesize(
-            text=response_text,
-            language_code=language
+        # Step 4: Synthesize response to speech — run blocking call in thread pool
+        synthesis = await loop.run_in_executor(
+            None,
+            lambda: voice_service.synthesize(
+                text=response_text,
+                language_code=language
+            )
         )
         
         return {

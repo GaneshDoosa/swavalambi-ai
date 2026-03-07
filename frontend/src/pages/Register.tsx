@@ -13,6 +13,7 @@ export default function Register() {
   const [needsVerification, setNeedsVerification] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [verificationSuccess, setVerificationSuccess] = useState(false);
 
   const handleRegister = async (e: FormEvent) => {
     e.preventDefault();
@@ -71,11 +72,14 @@ export default function Register() {
         return; 
       }
       
-      // Email verified successfully, now redirect to login
-      alert("Email verified successfully! Please login with your credentials.");
-      navigate("/login");
+      // Email verified successfully, show visual success then redirect
+      setVerificationSuccess(true);
+      setTimeout(() => {
+        navigate("/login", { state: { usr: { message: "Email verified successfully! Please log in with your credentials." } } });
+      }, 2500);
     } catch {
       setError("Verification failed. Please try again.");
+      setVerificationSuccess(false);
     } finally {
       setLoading(false);
     }
@@ -200,7 +204,14 @@ export default function Register() {
           </form>
         ) : (
           <form className="space-y-4" onSubmit={handleVerifyEmail}>
-            <div className="space-y-1">
+            {verificationSuccess && (
+              <div className="bg-green-50 border border-green-200 text-green-700 text-sm p-4 rounded-xl text-center mb-4 transition-all">
+                <p className="font-bold">Email verified successfully!</p>
+                <p className="text-xs mt-1">Redirecting to login...</p>
+              </div>
+            )}
+            
+            <div className={`space-y-1 ${verificationSuccess ? 'opacity-50 pointer-events-none' : ''}`}>
               <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
                 Verification Code
               </label>
@@ -219,15 +230,20 @@ export default function Register() {
               <p className="text-[11px] text-gray-400 pl-1 text-center">Check your email for the 6-digit code</p>
             </div>
             <button
-              type="submit" disabled={loading}
-              className="bg-primary hover:bg-primary-dark text-white w-full py-4 rounded-xl font-bold text-lg shadow-md active:scale-[0.98] transition-all disabled:opacity-60"
+              type="submit" disabled={loading || verificationSuccess}
+              className={`w-full py-4 rounded-xl font-bold text-lg shadow-md active:scale-[0.98] transition-all flex justify-center items-center ${
+                verificationSuccess
+                  ? "bg-green-500 text-white cursor-default"
+                  : "bg-primary hover:bg-primary-dark text-white disabled:opacity-60"
+              }`}
             >
-              {loading ? "Verifying…" : "Verify & Continue →"}
+              {loading ? "Verifying…" : verificationSuccess ? "Verified ✓" : "Verify & Continue →"}
             </button>
             <button
               type="button"
+              disabled={loading || verificationSuccess}
               onClick={() => { setNeedsVerification(false); setVerificationCode(""); setError(""); }}
-              className="w-full bg-gray-100 text-gray-600 py-3 rounded-xl font-semibold hover:bg-gray-200 transition-all"
+              className="w-full bg-gray-100 text-gray-600 py-3 rounded-xl font-semibold hover:bg-gray-200 transition-all disabled:opacity-50"
             >
               ← Back
             </button>
