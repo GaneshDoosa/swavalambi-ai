@@ -220,12 +220,14 @@ async def voice_chat(
                         chat_history = user["chat_history"]
                         restored_messages = []
                         for msg in chat_history:
-                            restored_messages.append({
-                                "role": msg["role"],
-                                "content": [{"text": msg["content"]}]
-                            })
+                            # Skip messages with empty content
+                            if msg.get("content") and msg["content"].strip():
+                                restored_messages.append({
+                                    "role": msg["role"],
+                                    "content": [{"text": msg["content"]}]
+                                })
                         get_agent_session(session_id).agent.messages = restored_messages
-                        logger.info("Restored %d messages from DynamoDB for voice chat %s", len(chat_history), user_id)
+                        logger.info("Restored %d messages from DynamoDB for voice chat %s", len(restored_messages), user_id)
                         chat_restored = True
                 except Exception as e:
                     logger.warning("Failed to restore chat history for voice: %s", e)
@@ -469,10 +471,12 @@ async def voice_chat_stream(
                             chat_history = user["chat_history"]
                             restored_messages = []
                             for msg in chat_history:
-                                restored_messages.append({
-                                    "role": msg["role"],
-                                    "content": [{"text": msg["content"]}]
-                                })
+                                # Skip messages with empty content
+                                if msg.get("content") and msg["content"].strip():
+                                    restored_messages.append({
+                                        "role": msg["role"],
+                                        "content": [{"text": msg["content"]}]
+                                    })
                             agent.agent.messages = restored_messages
                             logger.info("Restored chat history for streaming")
                     except Exception as e:

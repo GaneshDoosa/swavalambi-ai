@@ -65,13 +65,15 @@ async def chat_profile(request: ChatRequest):
                     # Convert to Strands message format
                     restored_messages = []
                     for msg in chat_history:
-                        restored_messages.append({
-                            "role": msg["role"],
-                            "content": [{"text": msg["content"]}]
-                        })
+                        # Skip messages with empty content
+                        if msg.get("content") and msg["content"].strip():
+                            restored_messages.append({
+                                "role": msg["role"],
+                                "content": [{"text": msg["content"]}]
+                            })
                     # Set the agent's messages
                     get_agent_session(request.session_id).agent.messages = restored_messages
-                    logger.info("Restored %d messages from DynamoDB for user %s", len(chat_history), request.user_id)
+                    logger.info("Restored %d messages from DynamoDB for user %s", len(restored_messages), request.user_id)
                     chat_restored = True
             except Exception as e:
                 logger.warning("Failed to restore chat history: %s", e)
@@ -336,12 +338,14 @@ async def chat_profile_stream(request: ChatRequest):
                     chat_history = user["chat_history"]
                     restored_messages = []
                     for msg in chat_history:
-                        restored_messages.append({
-                            "role": msg["role"],
-                            "content": [{"text": msg["content"]}]
-                        })
+                        # Skip messages with empty content
+                        if msg.get("content") and msg["content"].strip():
+                            restored_messages.append({
+                                "role": msg["role"],
+                                "content": [{"text": msg["content"]}]
+                            })
                     get_agent_session(request.session_id).agent.messages = restored_messages
-                    logger.info("Restored %d messages for streaming session", len(chat_history))
+                    logger.info("Restored %d messages for streaming session", len(restored_messages))
                     chat_restored = True
             except Exception as e:
                 logger.warning("Failed to restore chat history: %s", e)
