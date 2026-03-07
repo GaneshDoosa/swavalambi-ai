@@ -70,15 +70,27 @@ async def get_recommendations(req: RecommendationRequest):
         logger.info(f"Fetching profile from DynamoDB for user_id={req.user_id}")
         try:
             user_data = get_user(req.user_id)
-            if not user_data or "profile_assessment" not in user_data:
-                logger.warning(f"User profile not found in DynamoDB: {req.user_id}")
-                raise HTTPException(status_code=404, detail="User profile not found in DynamoDB")
+            if not user_data:
+                logger.warning(f"User not found in DynamoDB: {req.user_id}")
+                raise HTTPException(status_code=404, detail="User not found. Please register first.")
+            
+            # Check if profile assessment exists and is complete
+            if "profile_assessment" not in user_data or not user_data["profile_assessment"]:
+                logger.warning(f"Profile assessment not found for user: {req.user_id}")
+                raise HTTPException(
+                    status_code=428,  # 428 Precondition Required
+                    detail="Profile assessment not complete. Please complete your skill assessment first."
+                )
             
             profile_assessment = user_data["profile_assessment"]
             
-            # Required fields
-            if "profession_skill" not in profile_assessment:
-                raise HTTPException(status_code=400, detail="profession_skill missing in profile")
+            # Required fields check
+            if "profession_skill" not in profile_assessment or not profile_assessment["profession_skill"]:
+                logger.warning(f"profession_skill missing in profile for user: {req.user_id}")
+                raise HTTPException(
+                    status_code=428,
+                    detail="Profile assessment not complete. Please complete your skill assessment first."
+                )
             
             user_profile["profession_skill"] = profile_assessment["profession_skill"]
             
@@ -86,10 +98,14 @@ async def get_recommendations(req: RecommendationRequest):
             if req.intent:
                 user_profile["intent"] = req.intent.strip().lower()
                 logger.info(f"Using intent override from request: {user_profile['intent']}")
-            elif "intent" in profile_assessment:
+            elif "intent" in profile_assessment and profile_assessment["intent"]:
                 user_profile["intent"] = profile_assessment["intent"]
             else:
-                raise HTTPException(status_code=400, detail="intent missing in profile and not provided in request")
+                logger.warning(f"intent missing in profile for user: {req.user_id}")
+                raise HTTPException(
+                    status_code=428,
+                    detail="Profile assessment not complete. Please complete your skill assessment first."
+                )
             
             user_profile["skill_rating"] = int(profile_assessment.get("theory_score", 3))
             

@@ -408,7 +408,9 @@ async def chat_profile_stream(request: ChatRequest):
                 yield f"data: {json.dumps({'chunk': chunk, 'done': False})}\n\n"
             
             # Process complete response for metadata
-            result = agent._process_response(full_response)
+            # CRITICAL: Use last_full_response which contains the unfiltered response with markers
+            actual_full_response = getattr(agent, 'last_full_response', full_response)
+            result = agent._process_response(actual_full_response)
             
             # Save chat history
             if request.user_id:
