@@ -10,7 +10,8 @@
       "cognito-idp:ResendConfirmationCode",
       "cognito-idp:ForgotPassword",
       "cognito-idp:ConfirmForgotPassword",
-      "cognito-idp:ChangePassword"
+      "cognito-idp:ChangePassword",
+      "cognito-idp:AdminDeleteUser"
     ],
     "Resource": "arn:aws:cognito-idp:us-east-1:*:userpool/us-east-1_bRKpUL77I"
   }]
