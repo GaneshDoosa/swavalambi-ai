@@ -40,9 +40,9 @@ def search_jobs_tool(skill: str, skill_level: int, state: str, query_embedding: 
     
     # Only pass filters if they exist
     if filters:
-        return agent.search_jobs(user_profile, limit=5, query_embedding=query_embedding, filters=filters)
+        return agent.search_jobs(user_profile, limit=10, query_embedding=query_embedding, filters=filters)
     else:
-        return agent.search_jobs(user_profile, limit=5, query_embedding=query_embedding)
+        return agent.search_jobs(user_profile, limit=10, query_embedding=query_embedding)
 
 JOBS_TOOL_DEFINITION = {
     "name": "search_jobs",

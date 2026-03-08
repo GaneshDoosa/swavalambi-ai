@@ -127,7 +127,6 @@ export default function Jobs() {
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex-1">
                     <h3 className="font-bold text-slate-800 text-lg leading-tight">{job.title}</h3>
-                    <p className="text-slate-600 text-sm mt-1">{job.company}</p>
                   </div>
                   <span className="px-3 py-1 bg-green-100 text-green-700 text-[10px] font-bold uppercase rounded-full shrink-0">
                     {job.source}

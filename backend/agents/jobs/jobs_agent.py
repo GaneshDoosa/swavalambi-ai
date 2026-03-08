@@ -43,7 +43,10 @@ class JobsAgent(BaseAgent):
         return min(score, 1.0)
     
     def search_jobs(self, user_profile: dict, limit: int = 10, query_embedding: list[float] = None, filters: dict = None) -> list[dict]:
-        results = self.search(user_profile, limit, query_embedding=query_embedding, filters=filters)
+        # Fetch more results initially to account for deduplication
+        # If we want 'limit' unique results, fetch 3-4x that amount
+        fetch_limit = limit * 4
+        results = self.search(user_profile, fetch_limit, query_embedding=query_embedding, filters=filters)
         
         # Format results for UI compatibility
         for job in results:
@@ -67,4 +70,15 @@ class JobsAgent(BaseAgent):
             else:
                 job['apply_url'] = ""
         
-        return results
+        # Deduplicate by (company, title, location)
+        seen = set()
+        unique_jobs = []
+        
+        for job in results:
+            key = (job.get('company', ''), job.get('title', ''), job.get('location', ''))
+            if key not in seen:
+                seen.add(key)
+                unique_jobs.append(job)
+        
+        # Return only the requested limit after deduplication
+        return unique_jobs[:limit]

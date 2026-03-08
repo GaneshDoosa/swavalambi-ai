@@ -54,10 +54,6 @@ const JobCard = ({ job, locked, onLockedClick }: { job: Job; locked: boolean; on
         </div>
         <div>
           <h3 className="font-bold text-gray-800 text-sm leading-tight">{job.title}</h3>
-          <div className="flex items-center gap-1 mt-0.5">
-            <Building2 size={11} className="text-gray-400" />
-            <span className="text-gray-500 text-xs">{job.company}</span>
-          </div>
         </div>
       </div>
       {job.vacancies > 1 && (
