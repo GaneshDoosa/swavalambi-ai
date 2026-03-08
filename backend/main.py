@@ -88,20 +88,24 @@ app = FastAPI(
 )
 
 # Enable CORS for frontend integration
+# Get allowed origins from environment variable (comma-separated)
+# Default includes localhost for development
+default_origins = ",".join([
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:3001"
+])
+cors_origins_str = os.getenv("CORS_ALLOWED_ORIGINS", default_origins)
+cors_origins = [origin.strip() for origin in cors_origins_str.split(",") if origin.strip()]
+
+logging.info(f"CORS allowed origins: {cors_origins}")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:3001",
-        "http://swavalambi-frontend-1772381208.s3-website-us-east-1.amazonaws.com",
-        "https://d21tmg809bunv0.cloudfront.net",
-        "https://www.swavalambi.co.in",
-        "https://swavalambi.co.in"
-    ],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
