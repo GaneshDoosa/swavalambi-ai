@@ -234,7 +234,7 @@ export default function Login() {
         </p>
 
         {/* Quick skip for demo */}
-        <button
+        {/* <button
           onClick={() => {
             localStorage.setItem("swavalambi_user_id", "demo");
             localStorage.setItem("swavalambi_name", "Demo User");
@@ -243,7 +243,7 @@ export default function Login() {
           className="text-center text-slate-400 text-xs underline mt-2"
         >
           Skip login (demo mode)
-        </button>
+        </button> */}
       </div>
     </div>
   );

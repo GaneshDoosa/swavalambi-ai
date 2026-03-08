@@ -352,41 +352,45 @@ export default function Profile() {
             <button className="text-primary text-sm font-medium hover:underline">Add New</button>
           </div>
           <div className="flex gap-4 overflow-x-auto px-4 pb-2 hide-scrollbar">
-            <div className="flex flex-col gap-2 min-w-[140px] group cursor-pointer">
-              <div className="w-full aspect-[3/4] bg-white rounded-xl border border-slate-200 flex flex-col items-center justify-center gap-2 relative overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-                <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                <FileText className="text-primary" size={48} />
-                <span className="text-xs font-bold text-primary bg-primary/10 px-2 py-0.5 rounded uppercase">PDF</span>
+            <div className="flex flex-col gap-2 min-w-[140px] group cursor-not-allowed opacity-60">
+              <div className="w-full aspect-[3/4] bg-white rounded-xl border border-slate-200 flex flex-col items-center justify-center gap-2 relative overflow-hidden shadow-sm">
+                <div className="absolute top-2 right-2">
+                  <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-full border border-amber-200">Coming Soon</span>
+                </div>
+                <FileText className="text-slate-400" size={48} />
+                <span className="text-xs font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded uppercase">PDF</span>
               </div>
               <div>
-                <p className="text-sm font-semibold truncate">Resume_Final.pdf</p>
-                <p className="text-xs text-slate-500">Add your resume</p>
+                <p className="text-sm font-semibold truncate text-slate-600">Resume Builder</p>
+                <p className="text-xs text-slate-500">Feature coming soon</p>
               </div>
             </div>
 
-            <Link to="/certificate" className="flex flex-col gap-2 min-w-[140px] group cursor-pointer">
-              <div className="w-full aspect-[3/4] bg-white rounded-xl border border-slate-200 flex flex-col items-center justify-center gap-2 relative overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-                <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                <Award className="text-primary" size={48} />
-                <span className="text-xs font-bold text-primary bg-primary/10 px-2 py-0.5 rounded uppercase">Cert</span>
+            <div className="flex flex-col gap-2 min-w-[140px] group cursor-not-allowed opacity-60">
+              <div className="w-full aspect-[3/4] bg-white rounded-xl border border-slate-200 flex flex-col items-center justify-center gap-2 relative overflow-hidden shadow-sm">
+                <div className="absolute top-2 right-2">
+                  <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-full border border-amber-200">Coming Soon</span>
+                </div>
+                <Award className="text-slate-400" size={48} />
+                <span className="text-xs font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded uppercase">Cert</span>
               </div>
               <div>
-                <p className="text-sm font-semibold truncate">Skill Certificate</p>
-                <p className="text-xs text-slate-500">{skillRating >= 3 ? 'View certificate' : 'Complete assessment'}</p>
+                <p className="text-sm font-semibold truncate text-slate-600">Skill Certificate</p>
+                <p className="text-xs text-slate-500">Feature coming soon</p>
               </div>
-            </Link>
+            </div>
 
-            <div className="flex flex-col gap-2 min-w-[140px] group cursor-pointer">
-              <div className="w-full aspect-[3/4] bg-white rounded-xl border border-slate-200 flex flex-col items-center justify-center gap-2 relative overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-                <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                <ShieldCheck className={skillRating >= 3 ? 'text-green-600' : 'text-slate-300'} size={48} />
-                <span className={`text-xs font-bold px-2 py-0.5 rounded uppercase ${skillRating >= 3 ? 'text-green-600 bg-green-100' : 'text-slate-400 bg-slate-100'}`}>
-                  {skillRating >= 3 ? 'Verified' : 'Pending'}
-                </span>
+            <div className="flex flex-col gap-2 min-w-[140px] group cursor-not-allowed opacity-60">
+              <div className="w-full aspect-[3/4] bg-white rounded-xl border border-slate-200 flex flex-col items-center justify-center gap-2 relative overflow-hidden shadow-sm">
+                <div className="absolute top-2 right-2">
+                  <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-full border border-amber-200">Coming Soon</span>
+                </div>
+                <ShieldCheck className="text-slate-400" size={48} />
+                <span className="text-xs font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded uppercase">KYC</span>
               </div>
               <div>
-                <p className="text-sm font-semibold truncate">ID Proof / KYC</p>
-                <p className="text-xs text-slate-500">Aadhaar / PAN</p>
+                <p className="text-sm font-semibold truncate text-slate-600">ID Proof / KYC</p>
+                <p className="text-xs text-slate-500">Feature coming soon</p>
               </div>
             </div>
           </div>
