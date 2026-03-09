@@ -498,6 +498,9 @@ async def voice_chat_stream(
             
             logger.info("[INFO] LLM streaming complete, total length: %d", len(full_response))
             
+            # Send text_complete BEFORE TTS so frontend knows text is done and audio is being prepared
+            yield f"data: {json.dumps({'type': 'text_complete', 'text': full_response})}\n\n"
+            
             # Now synthesize the complete text for audio (in parallel, UI already has text)
             try:
                 # Use regular TTS synthesis with complete text (faster than streaming TTS)
@@ -514,9 +517,6 @@ async def voice_chat_stream(
                 logger.error("TTS synthesis failed: %s", e)
                 import traceback
                 traceback.print_exc()
-            
-            # Send complete text
-            yield f"data: {json.dumps({'type': 'text_complete', 'text': full_response})}\n\n"
             
             # Process response for metadata and get cleaned text (use actual_full_response with markers)
             result = agent._process_response(actual_full_response)

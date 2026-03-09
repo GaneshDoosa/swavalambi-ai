@@ -1494,6 +1494,7 @@ export default function Assistant() {
                   }
                 } else if (data.type === "audio_complete") {
                   // Complete audio received - play it if voice is enabled
+                  setIsLoadingAudio(null); // Clear "preparing audio" indicator
                   if (voiceAutoPlay && data.audio_base64) {
                     try {
                       const audioEndTime = performance.now();
@@ -1533,6 +1534,10 @@ export default function Assistant() {
                           : msg
                       )
                     );
+                  }
+                  // Show "preparing audio" indicator while TTS is being generated
+                  if (voiceAutoPlay) {
+                    setIsLoadingAudio(assistantMsgId);
                   }
                 } else if (data.type === "complete") {
                   // Update with final metadata
@@ -1951,7 +1956,7 @@ export default function Assistant() {
 
                 {/* Playback Button - Outside message bubble, only for assistant messages */}
                 {msg.role === "assistant" && (
-                  <div className="flex-shrink-0 mb-1">
+                  <div className="flex-shrink-0 mb-1 flex flex-col items-center gap-1">
                     <PlaybackButton
                       messageId={msg.id}
                       messageText={msg.content}
@@ -1960,6 +1965,22 @@ export default function Assistant() {
                       onPlay={() => playMessage(msg.id, msg.content)}
                       onStop={stopMessage}
                     />
+                    {isLoadingAudio === msg.id && (
+                      <span className="text-[9px] text-primary/70 font-medium whitespace-nowrap">
+                        {({
+                          "hi-IN": "ऑडियो तैयार हो रहा है...",
+                          "te-IN": "ఆడియో సిద్ధమవుతోంది...",
+                          "ta-IN": "ஆடியோ தயாராகிறது...",
+                          "mr-IN": "ऑडिओ तयार होत आहे...",
+                          "kn-IN": "ಆಡಿಯೋ ತಯಾರಾಗುತ್ತಿದೆ...",
+                          "bn-IN": "অডিও প্রস্তুত হচ্ছে...",
+                          "gu-IN": "ઑડિઓ તૈયાર થઈ રહ્યો છે...",
+                          "ml-IN": "ഓഡിയോ തയ്യാറാകുന്നു...",
+                          "pa-IN": "ਆਡੀਓ ਤਿਆਰ ਹੋ ਰਿਹਾ ਹੈ...",
+                          "en-IN": "Preparing audio...",
+                        } as Record<string, string>)[selectedLanguage] || "Preparing audio..."}
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
