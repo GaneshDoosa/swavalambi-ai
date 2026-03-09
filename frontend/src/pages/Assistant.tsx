@@ -1274,7 +1274,10 @@ export default function Assistant() {
 
       recorder.onstop = async () => {
         const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-        await sendVoiceMessage(audioBlob);
+        // Immediately show placeholder so user sees feedback while STT processes
+        const tempMsgId = `user-temp-${Date.now()}`;
+        setMessages(prev => [...prev, { id: tempMsgId, role: "user", content: "🎤 ..." }]);
+        await sendVoiceMessage(audioBlob, tempMsgId);
         stream.getTracks().forEach(track => track.stop());
       };
 
@@ -1289,25 +1292,26 @@ export default function Assistant() {
 
   const stopRecording = () => {
     if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      setIsLoading(true); // Show loading indicator immediately when mic is released
       mediaRecorder.stop();
       setIsRecording(false);
     }
   };
 
-  const sendVoiceMessage = async (audioBlob: Blob) => {
-    setIsLoading(true);
+  const sendVoiceMessage = async (audioBlob: Blob, tempMsgId?: string) => {
+    // Loading state already set in stopRecording() for immediate feedback
     
     // Check if streaming is enabled
     const enableStreaming = import.meta.env.VITE_ENABLE_STREAMING === "true";
     
     if (enableStreaming) {
-      await sendVoiceMessageStreaming(audioBlob);
+      await sendVoiceMessageStreaming(audioBlob, tempMsgId);
     } else {
-      await sendVoiceMessageNonStreaming(audioBlob);
+      await sendVoiceMessageNonStreaming(audioBlob, tempMsgId);
     }
   };
 
-  const sendVoiceMessageNonStreaming = async (audioBlob: Blob) => {
+  const sendVoiceMessageNonStreaming = async (audioBlob: Blob, tempMsgId?: string) => {
     try {
       const startTime = performance.now();
       const formData = new FormData();
@@ -1328,15 +1332,17 @@ export default function Assistant() {
       const endTime = performance.now();
       console.log(`[STT Latency] Non-streaming STT & Response generation took ${(endTime - startTime).toFixed(2)} ms`);
 
-      // Add user message
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now().toString(),
-          role: "user",
-          content: data.transcribed_text,
-        },
-      ]);
+      // Replace placeholder or add new user message
+      if (tempMsgId) {
+        setMessages((prev) => prev.map(m =>
+          m.id === tempMsgId ? { ...m, content: data.transcribed_text } : m
+        ));
+      } else {
+        setMessages((prev) => [
+          ...prev,
+          { id: Date.now().toString(), role: "user", content: data.transcribed_text },
+        ]);
+      }
 
       // Add assistant response
       const assistantMessageId = (Date.now() + 1).toString();
@@ -1378,9 +1384,9 @@ export default function Assistant() {
     }
   };
 
-  const sendVoiceMessageStreaming = async (audioBlob: Blob) => {
-    // Generate unique IDs upfront to prevent collisions
-    const userMsgId = `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const sendVoiceMessageStreaming = async (audioBlob: Blob, tempMsgId?: string) => {
+    // Use tempMsgId if provided (placeholder already added), otherwise generate new
+    const userMsgId = tempMsgId || `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const assistantMsgId = `assistant-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
     try {
@@ -1437,14 +1443,17 @@ export default function Assistant() {
                     const sttEndTime = performance.now();
                     console.log(`[STT Latency] Streaming STT transcribed user voice in ${(sttEndTime - startTime).toFixed(2)} ms`);
                     
-                    setMessages((prev) => [
-                      ...prev,
-                      {
-                        id: userMsgId,
-                        role: "user",
-                        content: data.text,
-                      },
-                    ]);
+                    if (tempMsgId) {
+                      // Replace the placeholder with real transcription
+                      setMessages((prev) => prev.map(m =>
+                        m.id === userMsgId ? { ...m, content: data.text } : m
+                      ));
+                    } else {
+                      setMessages((prev) => [
+                        ...prev,
+                        { id: userMsgId, role: "user", content: data.text },
+                      ]);
+                    }
                     userMessageAdded = true;
                   }
                   
