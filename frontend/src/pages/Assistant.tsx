@@ -1263,6 +1263,13 @@ export default function Assistant() {
 
   // Voice recording functions
   const startRecording = async () => {
+    // Stop any playing audio before recording
+    if (currentAudio) {
+      currentAudio.pause();
+      currentAudio.currentTime = 0;
+      setCurrentAudio(null);
+      setPlayingMessageId(null);
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream);
