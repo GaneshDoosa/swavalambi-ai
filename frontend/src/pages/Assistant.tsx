@@ -2019,7 +2019,7 @@ export default function Assistant() {
             </button>
             <div className="flex-1 bg-slate-100 rounded-xl px-4 py-3">
               <input
-                className="bg-transparent border-none focus:ring-0 w-full text-sm placeholder:text-slate-500"
+                className="bg-transparent border-none focus:ring-0 outline-none w-full text-sm placeholder:text-slate-500"
                 placeholder="Type or ask anything..."
                 type="text"
                 value={input}
