@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 NCS_JOB_URL       = "https://betacloud.ncs.gov.in/api/v1/job-posts/search"
 MYSCHEME_URL      = "https://api.myscheme.gov.in/search/v6/schemes"
-MYSCHEME_API_KEY  = "tYTy5eEhlu9rFjyxuCr7ra7ACp4dv1RH8gWuHTDc"
+MYSCHEME_API_KEY  = os.getenv("MYSCHEME_API_KEY", "")
 SKILL_INDIA_URL   = "https://api-fe.skillindiadigital.gov.in/api/trainingcenters/filter"
 
 _TIMEOUT = 10   # seconds per outbound request
