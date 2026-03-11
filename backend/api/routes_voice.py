@@ -94,24 +94,24 @@ async def synthesize_speech(request: SynthesizeRequest):
     """
     Convert text to speech using AWS Polly or Sarvam AI
     
-    Returns base64-encoded audio
+    Returns array of audio chunks (one per sentence) for progressive playback
     """
     try:
-        # Synthesize — run blocking sync call in a thread pool to avoid blocking the event loop
+        # Use sentence-by-sentence synthesis for better caching and progressive playback
         loop = asyncio.get_event_loop()
         voice_service = get_voice_service()
-        result = await loop.run_in_executor(
+        audio_chunks = await loop.run_in_executor(
             None,
-            lambda: voice_service.synthesize(
+            lambda: voice_service.synthesize_sentences(
                 text=request.text,
                 language_code=request.language,
                 voice_id=request.voice_id
             )
         )
         
-        logger.info("Synthesized speech: %s...", request.text[:50])
+        logger.info("Synthesized %d sentences: %s...", len(audio_chunks), request.text[:50])
         
-        return result
+        return {"audio_chunks": audio_chunks}
         
     except Exception as e:
         logger.error("Synthesis failed: %s", e)
@@ -501,18 +501,22 @@ async def voice_chat_stream(
             # Send text_complete BEFORE TTS so frontend knows text is done and audio is being prepared
             yield f"data: {json.dumps({'type': 'text_complete', 'text': full_response})}\n\n"
             
-            # Now synthesize the complete text for audio (in parallel, UI already has text)
+            # Now synthesize sentence-by-sentence for progressive playback
             try:
-                # Use regular TTS synthesis with complete text (faster than streaming TTS)
-                synthesis_result = voice_service.synthesize(
+                # Use sentence-by-sentence TTS with caching
+                audio_chunks = voice_service.synthesize_sentences(
                     text=full_response,
                     language_code=language
                 )
                 
-                # Send the complete audio as one chunk
-                yield f"data: {json.dumps({'type': 'audio_complete', 'audio_base64': synthesis_result['audio_base64'], 'audio_format': synthesis_result['audio_format']})}\n\n"
+                # Send each audio chunk as it's ready
+                for chunk in audio_chunks:
+                    yield f"data: {json.dumps({'type': 'audio_chunk', 'audio_base64': chunk['audio_base64'], 'audio_format': chunk['audio_format'], 'sentence': chunk['sentence'], 'cached': chunk['cached'], 'index': chunk['index']})}\n\n"
                 
-                logger.info("[INFO] TTS synthesis complete")
+                # Send audio complete signal
+                yield f"data: {json.dumps({'type': 'audio_complete', 'total_chunks': len(audio_chunks)})}\n\n"
+                
+                logger.info("[INFO] TTS synthesis complete: %d sentences", len(audio_chunks))
             except Exception as e:
                 logger.error("TTS synthesis failed: %s", e)
                 import traceback

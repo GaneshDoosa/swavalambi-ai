@@ -18,6 +18,43 @@ import re
 from typing import Optional, Dict, Any, AsyncGenerator
 from enum import Enum
 from sarvamai import AsyncSarvamAI, AudioOutput, EventResponse
+from services.tts_cache_service import get_tts_cache_service
+
+
+def split_into_sentences(text: str) -> list[str]:
+    """
+    Split text into sentences for progressive TTS.
+    Handles multiple languages and preserves sentence boundaries.
+    
+    Args:
+        text: Full text to split
+    
+    Returns:
+        List of sentences
+    """
+    if not text:
+        return []
+    
+    import re
+    
+    # Split on sentence-ending punctuation followed by space/newline
+    # This regex keeps the punctuation with the sentence
+    sentences = re.split(r'(?<=[.!?])\s+', text)
+    
+    # Filter out empty sentences and strip whitespace
+    result = [s.strip() for s in sentences if s.strip()]
+    
+    # Debug logging
+    print(f"[SPLIT] Input: {text[:100]}...")
+    print(f"[SPLIT] Output: {len(result)} sentences")
+    for i, s in enumerate(result):
+        print(f"[SPLIT]   {i+1}. {s[:60]}...")
+    
+    # If no sentences found (no punctuation), return the whole text as one sentence
+    if not result:
+        return [text.strip()] if text.strip() else []
+    
+    return result
 
 
 def clean_text_for_tts(text: str) -> str:
@@ -418,11 +455,32 @@ class VoiceService:
         # Clean text before TTS (remove markdown and emojis)
         cleaned_text = clean_text_for_tts(text)
         
+        # Get speaker for cache key (needed for both AWS and Sarvam)
+        lang_code = language_code.split('-')[0].upper()
+        env_key = f"SARVAM_TTS_SPEAKER_{lang_code}"
+        speaker = os.getenv(env_key, os.getenv("SARVAM_TTS_SPEAKER", "shubh"))
+        
+        # Check cache first
+        cache_enabled = os.getenv("TTS_CACHE_ENABLED", "false").lower() == "true"
+        if cache_enabled:
+            cache = get_tts_cache_service()
+            cached_audio = cache.get_cached_audio(cleaned_text, language_code, speaker)
+            if cached_audio:
+                return cached_audio
+        
+        # Cache miss - generate audio
         try:
             if self.provider == VoiceProvider.AWS:
-                return self._synthesize_aws(cleaned_text, language_code, voice_id)
+                result = self._synthesize_aws(cleaned_text, language_code, voice_id)
             else:
-                return self._synthesize_sarvam(cleaned_text, language_code)
+                result = self._synthesize_sarvam(cleaned_text, language_code)
+            
+            # Store in cache
+            if cache_enabled:
+                cache.cache_audio(cleaned_text, language_code, speaker, result)
+            
+            return result
+            
         except Exception as e:
             print(f"[ERROR] Synthesis failed with {self.provider.value}: {e}")
             if not self.fallback_enabled:
@@ -430,10 +488,95 @@ class VoiceService:
             # Fallback
             if self.provider == VoiceProvider.AWS:
                 print("[INFO] Falling back to Sarvam AI")
-                return self._synthesize_sarvam(cleaned_text, language_code)
+                result = self._synthesize_sarvam(cleaned_text, language_code)
             else:
                 print("[INFO] Falling back to AWS")
-                return self._synthesize_aws(cleaned_text, language_code, voice_id)
+                result = self._synthesize_aws(cleaned_text, language_code, voice_id)
+            
+            # Store fallback result in cache too
+            if cache_enabled:
+                cache.cache_audio(cleaned_text, language_code, speaker, result)
+            
+            return result
+    
+    def synthesize_sentences(
+        self,
+        text: str,
+        language_code: str = "hi-IN",
+        voice_id: Optional[str] = None
+    ) -> list[Dict[str, Any]]:
+        """
+        Synthesize text to speech sentence-by-sentence for progressive playback.
+        Each sentence is cached independently for maximum cache hit rate.
+        
+        Args:
+            text: Full text to convert to speech
+            language_code: Language code
+            voice_id: Optional voice ID
+        
+        Returns:
+            List of audio chunks, one per sentence:
+            [
+                {
+                    "audio_base64": "...",
+                    "audio_format": "wav",
+                    "sentence": "Great choice!",
+                    "cached": true
+                },
+                ...
+            ]
+        """
+        import time
+        start_time = time.time()
+        
+        # Split into sentences
+        sentences = split_into_sentences(text)
+        
+        if not sentences:
+            return []
+        
+        print(f"[INFO] Synthesizing {len(sentences)} sentences for progressive playback")
+        
+        audio_chunks = []
+        cache_hits = 0
+        cache_misses = 0
+        
+        for i, sentence in enumerate(sentences):
+            sentence_start = time.time()
+            
+            # Clean and check if sentence becomes empty after cleaning
+            from services.voice_service import clean_text_for_tts
+            cleaned = clean_text_for_tts(sentence)
+            
+            if not cleaned or not cleaned.strip():
+                print(f"[WARN] Sentence {i+1} became empty after cleaning, skipping: {sentence[:50]}")
+                continue
+            
+            # Synthesize this sentence (uses cache internally, will clean again but that's ok)
+            result = self.synthesize(sentence, language_code, voice_id)
+            
+            sentence_time = (time.time() - sentence_start) * 1000
+            was_cached = sentence_time < 100  # Cache hits are <100ms
+            
+            if was_cached:
+                cache_hits += 1
+            else:
+                cache_misses += 1
+            
+            audio_chunks.append({
+                "audio_base64": result["audio_base64"],
+                "audio_format": result["audio_format"],
+                "sentence": sentence,
+                "cached": was_cached,
+                "index": i
+            })
+            
+            print(f"[INFO] Sentence {i+1}/{len(sentences)}: {sentence_time:.0f}ms ({'cached' if was_cached else 'generated'})")
+        
+        total_time = (time.time() - start_time) * 1000
+        print(f"[LATENCY] Total sentence-by-sentence TTS: {total_time:.2f}ms ({cache_hits} cached, {cache_misses} generated)")
+        
+        return audio_chunks
     
     def _synthesize_aws(
         self,

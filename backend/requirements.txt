@@ -16,3 +16,4 @@ psycopg2-binary
 pgvector
 sarvamai>=0.1.25
 websockets
+redis

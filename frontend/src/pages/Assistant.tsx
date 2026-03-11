@@ -241,6 +241,11 @@ export default function Assistant() {
   const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null);
   const [isLoadingAudio, setIsLoadingAudio] = useState<string | null>(null);
 
+  // Audio queue for progressive sentence-by-sentence playback
+  const audioQueueRef = useRef<Array<{base64: string, format: string, index: number, sentence: string, cached: boolean}>>([]);
+  const isPlayingAudioQueue = useRef(false);
+  const audioQueueComplete = useRef(false);
+
   // Redirect countdown modal state
   const [showRedirectModal, setShowRedirectModal] = useState(false);
   const [redirectCountdown, setRedirectCountdown] = useState(5);
@@ -679,6 +684,52 @@ export default function Assistant() {
     };
   }, [currentAudio]);
 
+  // Progressive audio playback function
+  const playNextAudioChunk = async () => {
+    if (isPlayingAudioQueue.current) return; // Already playing
+    
+    if (audioQueueRef.current.length === 0) {
+      // No more chunks - check if we're done
+      if (audioQueueComplete.current) {
+        console.log('[TTS] All audio chunks played');
+        setPlayingMessageId(null);
+        setCurrentAudio(null);
+        isPlayingAudioQueue.current = false;
+        audioQueueComplete.current = false;
+      }
+      return;
+    }
+    
+    isPlayingAudioQueue.current = true;
+    const chunk = audioQueueRef.current.shift()!;
+    
+    try {
+      const audio = new Audio(`data:audio/${chunk.format};base64,${chunk.base64}`);
+      audio.playbackRate = 1.0;
+      
+      audio.onended = () => {
+        isPlayingAudioQueue.current = false;
+        // Play next chunk
+        playNextAudioChunk();
+      };
+      
+      audio.onerror = (e) => {
+        console.error('Audio chunk playback failed:', e);
+        isPlayingAudioQueue.current = false;
+        // Try next chunk
+        playNextAudioChunk();
+      };
+      
+      await audio.play();
+      setCurrentAudio(audio);
+      setPlayingMessageId('streaming'); // Indicate audio is playing
+    } catch (error) {
+      console.error('Failed to play audio chunk:', error);
+      isPlayingAudioQueue.current = false;
+      playNextAudioChunk();
+    }
+  };
+
   // Playback functions
   const playMessage = async (messageId: string, text: string) => {
     // Stop any currently playing audio
@@ -686,6 +737,11 @@ export default function Assistant() {
       currentAudio.pause();
       currentAudio.currentTime = 0;
     }
+
+    // Reset audio queue
+    audioQueueRef.current = [];
+    isPlayingAudioQueue.current = false;
+    audioQueueComplete.current = false;
 
     setIsLoadingAudio(messageId);
 
@@ -706,28 +762,48 @@ export default function Assistant() {
       const endTime = performance.now();
       console.log(`[TTS Latency] Synthesizing audio took ${(endTime - startTime).toFixed(2)} ms`);
       
-      const audio = new Audio(
-        `data:audio/${data.audio_format};base64,${data.audio_base64}`
-      );
+      setIsLoadingAudio(null);
 
-      // CRITICAL FIX: Set playback rate to 1.0 (normal speed)
-      audio.playbackRate = 1.0;
+      // Handle sentence-by-sentence audio chunks
+      if (data.audio_chunks && Array.isArray(data.audio_chunks)) {
+        console.log(`[TTS] Received ${data.audio_chunks.length} audio chunks`);
+        
+        // Queue all chunks
+        audioQueueRef.current = data.audio_chunks.map((chunk: any) => ({
+          base64: chunk.audio_base64,
+          format: chunk.audio_format,
+          index: chunk.index,
+          sentence: chunk.sentence,
+          cached: chunk.cached
+        }));
+        
+        audioQueueComplete.current = true;
+        
+        // Start playing
+        playNextAudioChunk();
+      } else {
+        // Fallback for old single-blob format
+        const audio = new Audio(
+          `data:audio/${data.audio_format};base64,${data.audio_base64}`
+        );
+        audio.playbackRate = 1.0;
 
-      audio.onended = () => {
-        setPlayingMessageId(null);
-        setCurrentAudio(null);
-      };
+        audio.onended = () => {
+          setPlayingMessageId(null);
+          setCurrentAudio(null);
+        };
 
-      audio.onerror = (e) => {
-        console.error("Audio playback failed:", e);
-        setPlayingMessageId(null);
-        setCurrentAudio(null);
-        setIsLoadingAudio(null);
-      };
+        audio.onerror = (e) => {
+          console.error("Audio playback failed:", e);
+          setPlayingMessageId(null);
+          setCurrentAudio(null);
+          setIsLoadingAudio(null);
+        };
 
-      await audio.play();
-      setCurrentAudio(audio);
-      setPlayingMessageId(messageId);
+        await audio.play();
+        setCurrentAudio(audio);
+        setPlayingMessageId(messageId);
+      }
     } catch (error) {
       console.error("TTS error:", error);
       alert("Unable to play audio. Please try again.");
@@ -1396,6 +1472,11 @@ export default function Assistant() {
     const userMsgId = tempMsgId || `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const assistantMsgId = `assistant-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
+    // Reset audio queue for new response
+    audioQueueRef.current = [];
+    isPlayingAudioQueue.current = false;
+    audioQueueComplete.current = false;
+    
     try {
       const startTime = performance.now();
       const formData = new FormData();
@@ -1492,37 +1573,32 @@ export default function Assistant() {
                       )
                     );
                   }
-                } else if (data.type === "audio_complete") {
-                  // Complete audio received - play it if voice is enabled
-                  setIsLoadingAudio(null); // Clear "preparing audio" indicator
+                } else if (data.type === "audio_chunk") {
+                  // Progressive audio chunk received - queue and play
                   if (voiceAutoPlay && data.audio_base64) {
-                    try {
-                      const audioEndTime = performance.now();
-                      console.log(`[TTS Latency] Streaming TTS generation took ${(audioEndTime - startTime).toFixed(2)} ms from microphone submission`);
-                      
-                      const audio = new Audio(
-                        `data:audio/${data.audio_format};base64,${data.audio_base64}`
-                      );
-                      audio.playbackRate = 1.0;
-                      
-                      audio.onended = () => {
-                        setPlayingMessageId(null);
-                        setCurrentAudio(null);
-                      };
-                      
-                      audio.onerror = (e) => {
-                        console.error("Audio playback failed:", e);
-                        setPlayingMessageId(null);
-                        setCurrentAudio(null);
-                      };
-                      
-                      await audio.play();
-                      setCurrentAudio(audio);
-                      setPlayingMessageId(assistantMsgId);
-                    } catch (error) {
-                      console.error("Audio playback failed:", error);
+                    const audioData = {
+                      base64: data.audio_base64,
+                      format: data.audio_format,
+                      index: data.index,
+                      sentence: data.sentence,
+                      cached: data.cached
+                    };
+                    
+                    // Add to queue
+                    audioQueueRef.current.push(audioData);
+                    
+                    console.log(`[TTS] Chunk ${data.index}: ${data.cached ? 'cached' : 'generated'} - "${data.sentence.substring(0, 30)}..."`);
+                    
+                    // Start playing if not already playing
+                    if (!isPlayingAudioQueue.current) {
+                      playNextAudioChunk();
                     }
                   }
+                } else if (data.type === "audio_complete") {
+                  // All audio chunks received
+                  setIsLoadingAudio(null); // Clear "preparing audio" indicator
+                  audioQueueComplete.current = true;
+                  console.log(`[TTS] All ${data.total_chunks} audio chunks received`);
                 } else if (data.type === "text_complete") {
                   // Fallback: Update message with complete text (in case we missed chunks)
                   if (data.text && data.text !== fullText) {
