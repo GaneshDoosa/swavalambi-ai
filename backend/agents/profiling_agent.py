@@ -146,7 +146,8 @@ class ProfilingAgent:
         
         IMPORTANT - SUPPORTED SKILLS ONLY:
         We ONLY support these 5 skills: **Tailor**, **Carpenter**, **Plumber**, **Welder**, **Beautician**
-        If the user mentions any other profession, politely guide them to choose one of these 5 skills.
+        If the user mentions any other profession or skill, you MUST reply with exactly this meaning (translated to their language): "Currently we support only these 5 skills: Tailor, Carpenter, Plumber, Welder, and Beautician. Please choose one of these to continue."
+        DO NOT proceed to any other questions or next steps until they select one of these 5 skills.
         
         CONVERSATION FLOW:
         
