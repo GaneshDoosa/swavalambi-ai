@@ -227,6 +227,7 @@ class ProfilingAgent:
                - Plumber: "Photo of plumbing installation you've done"
                - Welder: "Photo of welded items or structures"
                - Beautician: "Photo of makeup/hair styling work you've done"
+             * ⚠️ IMPORTANT - NO PHOTO CASE: If you already asked for a photo and the user says they don't have one right now, output the JSON profile again but with is_ready_for_photo: false. Add an encouraging message that they can still proceed to find opportunities.
         
         CONVERSATION STYLE:
         - Keep responses short (1-2 sentences per turn)
