@@ -223,7 +223,7 @@ async def chat_profile(request: ChatRequest):
                         logger.debug("Message %d extracted content length: %d", idx, len(content_str))
                         
                         # IMPORTANT: Strip out PROFILE_DATA markers before saving to chat history
-                        # These markers are for backend parsing only and should not be shown to users
+                        # These markers and the JSON inside are for backend parsing only and should not be shown to users
                         if "PROFILE_DATA_START" in content_str and "PROFILE_DATA_END" in content_str:
                             logger.debug("Found PROFILE_DATA markers in message %d, stripping them out", idx)
                             start_marker = "PROFILE_DATA_START"
@@ -232,6 +232,7 @@ async def chat_profile(request: ChatRequest):
                             end_idx = content_str.find(end_marker) + len(end_marker)
                             
                             # Remove everything from start_marker to end_marker (inclusive)
+                            # This removes the JSON profile data so it doesn't appear in chat history
                             content_before = content_str[:start_idx].strip()
                             content_after = content_str[end_idx:].strip()
                             
@@ -453,7 +454,7 @@ async def chat_profile_stream(request: ChatRequest):
                             else:
                                 content_str = str(content)
                             
-                            # Strip PROFILE_DATA markers
+                            # Strip PROFILE_DATA markers and the JSON inside
                             if "PROFILE_DATA_START" in content_str and "PROFILE_DATA_END" in content_str:
                                 start_marker = "PROFILE_DATA_START"
                                 end_marker = "PROFILE_DATA_END"
