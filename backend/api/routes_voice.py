@@ -140,6 +140,68 @@ async def translate_text(request: TranslateRequest):
         raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}")
 
 
+@router.get("/cache/stats", summary="Get TTS cache statistics")
+async def get_cache_stats():
+    """
+    Get TTS cache performance statistics
+    """
+    try:
+        from services.tts_cache_service import get_tts_cache_service
+        cache = get_tts_cache_service()
+        stats = cache.get_cache_stats()
+        return stats
+    except Exception as e:
+        logger.error("Failed to get cache stats: %s", e)
+        raise HTTPException(status_code=500, detail=f"Failed to get cache stats: {str(e)}")
+
+
+@router.get("/cache/keys", summary="List cached TTS sentences")
+async def list_cache_keys(limit: int = 50):
+    """
+    List cached TTS sentences (first N keys)
+    """
+    try:
+        from services.tts_cache_service import get_tts_cache_service
+        import redis
+        
+        cache_service = get_tts_cache_service()
+        if not cache_service.enabled:
+            return {"enabled": False, "message": "Cache is disabled"}
+        
+        r = cache_service.redis_client
+        
+        # Get keys
+        keys = []
+        for key in r.scan_iter(match="tts:msg:*", count=limit):
+            key_str = key.decode() if isinstance(key, bytes) else key
+            
+            # Get the cached data
+            value = r.get(key)
+            if value:
+                import json
+                data = json.loads(value)
+                keys.append({
+                    "key": key_str,
+                    "text": data.get("text", ""),
+                    "language": data.get("language", ""),
+                    "speaker": data.get("speaker", ""),
+                    "size_bytes": len(value)
+                })
+            
+            if len(keys) >= limit:
+                break
+        
+        return {
+            "enabled": True,
+            "total_keys": len(keys),
+            "keys": keys
+        }
+        
+    except Exception as e:
+        logger.error("Failed to list cache keys: %s", e)
+        raise HTTPException(status_code=500, detail=f"Failed to list cache keys: {str(e)}")
+
+
 @router.post("/chat", summary="Voice chat with AI assistant")
 async def voice_chat(
     audio: UploadFile = File(...),
