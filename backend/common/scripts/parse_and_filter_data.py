@@ -6,17 +6,26 @@ import csv
 import os
 from pathlib import Path
 
-# Target professions - 5 professions with balanced data
+# Target professions with balanced data
+# Previous batch (already loaded):
+# TARGET_PROFESSIONS = {
+#     "agriculture": ["agriculture", "farming", "farmer", "organic", "crop", "livestock", "dairy", "horticulture", "agri", "rural"],
+#     "tailoring": ["tailoring", "tailor", "sewing", "stitching", "embroidery", "garment", "textile", "fashion", "apparel"],
+#     "healthcare": ["healthcare", "health", "nursing", "nurse", "medical", "hospital", "clinic", "patient care", "home health", "wellness"],
+#     "tourism": ["tourism", "tourist", "hotel", "hospitality", "guest service", "travel", "resort", "housekeeping", "front office"],
+#     "electrician": ["electrician", "electrical", "electric", "wiring", "electronics", "solar", "power", "installation"]
+# }
+
+# New batch:
 TARGET_PROFESSIONS = {
-    "agriculture": ["agriculture", "farming", "farmer", "organic", "crop", "livestock", "dairy", "horticulture", "agri", "rural"],
-    "tailoring": ["tailoring", "tailor", "sewing", "stitching", "embroidery", "garment", "textile", "fashion", "apparel"],
-    "healthcare": ["healthcare", "health", "nursing", "nurse", "medical", "hospital", "clinic", "patient care", "home health", "wellness"],
-    "tourism": ["tourism", "tourist", "hotel", "hospitality", "guest service", "travel", "resort", "housekeeping", "front office"],
-    "electrician": ["electrician", "electrical", "electric", "wiring", "electronics", "solar", "power", "installation"]
+    "carpenter": ["carpenter", "carpentry", "woodwork", "wood", "furniture", "joinery", "cabinet", "timber", "wood working", "wooden", "masonry", "construction", "building", "civil work"],
+    "plumber": ["plumber", "plumbing", "pipe", "sanitary", "drainage", "water supply", "fitting", "pipeline", "water", "sewage", "tap", "valve", "bathroom", "toilet", "pump", "bore", "well", "irrigation"],
+    "welder": ["welder", "welding", "fabrication", "metal work", "arc welding", "gas welding", "fitter", "metal", "steel", "iron", "forge", "sheet metal", "manufacturing"],
+    "beautician": ["beautician", "beauty", "cosmetology", "makeup", "salon", "hair", "spa", "skincare", "parlour", "parlor", "cosmetic", "grooming", "hairdresser", "barber", "styling", "facial", "manicure", "pedicure", "wellness", "personal care", "hygiene"]
 }
 
 # Limit per profession
-LIMIT_PER_PROFESSION = 100
+LIMIT_PER_PROFESSION = 300
 
 def matches_profession(text, profession_keywords):
     """Check if text contains any keywords for a specific profession"""

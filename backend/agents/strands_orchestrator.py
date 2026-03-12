@@ -10,14 +10,10 @@ from dotenv import load_dotenv
 from agents.scheme.scheme_tool import search_schemes_tool
 from agents.jobs.jobs_tool import search_jobs_tool
 from agents.upskill.upskill_tool import search_upskill_tool
-from common.providers.provider_factory import get_embedding_provider
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)
-
-# Get singleton embedding provider instance
-_embedding_provider = get_embedding_provider()
 
 
 def orchestrate(user_profile: Dict[str, Any] = None, task: str = None, context: Dict[str, Any] = None, max_iterations: int = 10) -> Dict[str, Any]:
@@ -60,14 +56,6 @@ def orchestrate(user_profile: Dict[str, Any] = None, task: str = None, context: 
     print(f"  Level: {skill_level}/5")
     print(f"  Location: {state}")
     
-    # Generate embedding once (optimization)
-    print(f"\n🔄 Generating embedding...")
-    embed_start = time.time()
-    query_text = f"{skill} {intent} {state}"
-    query_embedding = _embedding_provider.generate_embedding(query_text)
-    embed_time = time.time() - embed_start
-    print(f"✅ Embedding generated (1024 dimensions) in {embed_time:.3f}s")
-    
     # Initialize empty results
     jobs = []
     schemes = []
@@ -82,7 +70,7 @@ def orchestrate(user_profile: Dict[str, Any] = None, task: str = None, context: 
         tool_call_start = time.time()
         salary_expectation = user_profile.get('salary_expectation')
         print(f"  💰 Salary from profile: {salary_expectation}")
-        jobs = search_jobs_tool(skill, skill_level, state, query_embedding=query_embedding, salary_expectation=salary_expectation)[:5]
+        jobs = search_jobs_tool(skill, skill_level, state, salary_expectation=salary_expectation)[:5]
         tool_call_time = time.time() - tool_call_start
         print(f"  → Tool call completed in {tool_call_time:.3f}s")
         print(f"  ✅ Found {len(jobs)} jobs")
@@ -91,7 +79,7 @@ def orchestrate(user_profile: Dict[str, Any] = None, task: str = None, context: 
     elif intent == 'upskill':
         print(f"  → Searching training centers...")
         tool_call_start = time.time()
-        training_centers = search_upskill_tool(skill, skill_level, state, query_embedding=query_embedding)[:5]
+        training_centers = search_upskill_tool(skill, skill_level, state)[:5]
         tool_call_time = time.time() - tool_call_start
         print(f"  → Tool call completed in {tool_call_time:.3f}s")
         print(f"  ✅ Found {len(training_centers)} training centers")
@@ -100,7 +88,7 @@ def orchestrate(user_profile: Dict[str, Any] = None, task: str = None, context: 
     elif intent == 'loan':
         print(f"  → Searching schemes...")
         tool_call_start = time.time()
-        schemes = search_schemes_tool(skill, intent, skill_level, state, query_embedding=query_embedding)[:5]
+        schemes = search_schemes_tool(skill, intent, skill_level, state)[:5]
         tool_call_time = time.time() - tool_call_start
         print(f"  → Tool call completed in {tool_call_time:.3f}s")
         print(f"  ✅ Found {len(schemes)} schemes")
@@ -110,19 +98,12 @@ def orchestrate(user_profile: Dict[str, Any] = None, task: str = None, context: 
         # Default to job search if intent is not recognized
         print(f"  ⚠️  Unknown intent '{intent}', defaulting to job search...")
         tool_call_start = time.time()
-        jobs = search_jobs_tool(skill, skill_level, state, query_embedding=query_embedding)[:5]
+        jobs = search_jobs_tool(skill, skill_level, state)[:5]
         tool_call_time = time.time() - tool_call_start
     tool_time = time.time() - tool_start
     
     total_time = time.time() - start_time
     print(f"\n⏱️  Performance:")
-    print(f"  Embedding: {embed_time:.3f}s")
-    print(f"  Tool execution: {tool_time:.3f}s")
-    print(f"  Total: {total_time:.3f}s")
-    
-    total_time = time.time() - start_time
-    print(f"\n⏱️  Performance:")
-    print(f"  Embedding: {embed_time:.3f}s")
     print(f"  Tool execution: {tool_time:.3f}s")
     print(f"  Total: {total_time:.3f}s")
     

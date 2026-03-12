@@ -13,17 +13,68 @@ class JobsAgent(BaseAgent):
         return f"{doc['title']} {doc['description']} {doc.get('company', '')} {' '.join(doc.get('skills', []))} {location}"
     
     def _build_query_text(self, user_profile: dict) -> str:
+        """Build comprehensive query text with profession-related terms"""
+        skill = user_profile.get('skill', '').lower()
         state = user_profile.get('state', '')
-        return f"{user_profile.get('skill', '')} job {state}"
+        
+        # Map professions to more specific terms
+        profession_mapping = {
+            'carpenter': 'carpenter carpentry woodwork wood furniture construction building',
+            'plumber': 'plumber plumbing pipe sanitary water construction building worker',
+            'welder': 'welder welding metal fabrication steel construction building manufacturing',
+            'beautician': 'beautician beauty salon cosmetic makeup hair spa skincare wellness',
+            'tailor': 'tailor tailoring sewing stitching garment textile fashion apparel clothing'
+        }
+        
+        # Get expanded terms for the profession
+        expanded_skill = profession_mapping.get(skill, skill)
+        
+        query_parts = [
+            expanded_skill,
+            'job employment',
+            state
+        ]
+        
+        return ' '.join(filter(None, query_parts))
     
     def calculate_eligibility_score(self, job: dict, user_profile: dict) -> float:
+        """Calculate eligibility score with improved profession matching"""
         score = 0.0
         
         user_skill = user_profile.get("skill", "").lower()
         job_skills = [s.lower() for s in job.get("skills", [])]
         job_title = job.get("title", "").lower()
-        if user_skill in job_title or any(user_skill in s for s in job_skills):
-            score += 0.4
+        job_description = job.get("description", "").lower()
+        
+        # Profession-specific scoring with more targeted matching
+        profession_keywords = {
+            'carpenter': ['carpenter', 'carpentry', 'woodwork', 'wood', 'furniture', 'joinery', 'cabinet', 'timber', 'construction', 'building'],
+            'plumber': ['plumber', 'plumbing', 'pipe', 'sanitary', 'drainage', 'water supply', 'fitting', 'pipeline', 'construction', 'building'],
+            'welder': ['welder', 'welding', 'metal', 'fabrication', 'steel', 'iron', 'construction', 'building', 'manufacturing'],
+            'beautician': ['beautician', 'beauty', 'salon', 'cosmetic', 'makeup', 'hair', 'spa', 'skincare', 'grooming', 'wellness'],
+            'tailor': ['tailor', 'tailoring', 'sewing', 'stitching', 'garment', 'textile', 'fashion', 'apparel', 'clothing', 'fabric']
+        }
+        
+        # Check for profession match in various fields
+        if user_skill in profession_keywords:
+            keywords = profession_keywords[user_skill]
+            
+            # Direct profession match (highest score)
+            if any(kw in job_title or kw in job_description for kw in keywords[:4]):  # First 4 are most specific
+                score += 0.5
+            # Broader category match in skills or description
+            elif any(kw in ' '.join(job_skills) or kw in job_description for kw in keywords[:6]):  # First 6 keywords
+                score += 0.3
+            # Construction/building related (for carpenter, plumber, welder)
+            elif user_skill in ['carpenter', 'plumber', 'welder'] and any(kw in job_title or kw in job_description or kw in ' '.join(job_skills) for kw in ['construction', 'building', 'worker']):
+                score += 0.2
+            # Generic skill match (fallback with lower score)
+            elif user_skill in job_title or any(user_skill in s for s in job_skills):
+                score += 0.1
+        else:
+            # Fallback for unmapped professions
+            if user_skill in job_title or any(user_skill in s for s in job_skills):
+                score += 0.4
         
         user_level = user_profile.get("skill_level", 0)
         if user_level >= 3:
