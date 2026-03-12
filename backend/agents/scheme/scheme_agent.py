@@ -98,7 +98,7 @@ class SchemeAgent(BaseAgent):
         # Intent matching
         user_intent = user_profile.get("intent", "").lower()
         intent_keywords = {
-            "job": ["employment", "job", "placement", "skill", "training"],
+            "job": ["employment", "job", "placement"],
             "upskill": ["training", "skill", "course", "education", "development"],
             "loan": ["loan", "credit", "financial", "subsidy", "assistance"]
         }
