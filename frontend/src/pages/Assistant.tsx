@@ -722,7 +722,7 @@ export default function Assistant() {
       
       await audio.play();
       setCurrentAudio(audio);
-      setPlayingMessageId('streaming'); // Indicate audio is playing
+      // Keep playingMessageId set (it should be set before calling this function)
     } catch (error) {
       console.error('Failed to play audio chunk:', error);
       isPlayingAudioQueue.current = false;
@@ -778,6 +778,9 @@ export default function Assistant() {
         }));
         
         audioQueueComplete.current = true;
+        
+        // Set playing state BEFORE starting playback
+        setPlayingMessageId(messageId);
         
         // Start playing
         playNextAudioChunk();
@@ -1591,6 +1594,8 @@ export default function Assistant() {
                     
                     // Start playing if not already playing
                     if (!isPlayingAudioQueue.current) {
+                      // Set playing state to the assistant message being streamed
+                      setPlayingMessageId(assistantMsgId);
                       playNextAudioChunk();
                     }
                   }
