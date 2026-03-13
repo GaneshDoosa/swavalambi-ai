@@ -54,6 +54,7 @@ def setup_postgres_tables():
                 level TEXT,
                 url TEXT,
                 embedding vector(1024),
+                ai_classified_scheme VARCHAR(50),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -74,6 +75,7 @@ def setup_postgres_tables():
                 max_salary NUMERIC,
                 experience TEXT,
                 embedding vector(1024),
+                ai_classified_job VARCHAR(50),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -92,6 +94,7 @@ def setup_postgres_tables():
                 contact TEXT,
                 email TEXT,
                 embedding vector(1024),
+                ai_classified_training VARCHAR(50),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -118,10 +121,13 @@ def setup_postgres_tables():
         # Create additional indexes
         cur.execute("CREATE INDEX schemes_state_idx ON schemes(state)")
         cur.execute("CREATE INDEX schemes_tags_idx ON schemes USING GIN(tags)")
+        cur.execute("CREATE INDEX schemes_ai_classified_idx ON schemes(ai_classified_scheme)")
         cur.execute("CREATE INDEX jobs_location_idx ON jobs(location)")
         cur.execute("CREATE INDEX jobs_skills_idx ON jobs USING GIN(skills)")
+        cur.execute("CREATE INDEX jobs_ai_classified_idx ON jobs(ai_classified_job)")
         cur.execute("CREATE INDEX upskill_location_idx ON upskill(location)")
         cur.execute("CREATE INDEX upskill_skills_idx ON upskill USING GIN(skills)")
+        cur.execute("CREATE INDEX upskill_ai_classified_idx ON upskill(ai_classified_training)")
         logger.info("✅ Created additional indexes")
         
         conn.commit()
