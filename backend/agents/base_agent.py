@@ -106,19 +106,24 @@ class BaseAgent:
                 is_match = False
                 
                 if self.index_name == 'schemes':
-                    # Schemes: match against state
+                    # Schemes: match against state field
                     result_state = result.get('state', '').lower()
                     
-                    if user_state and (user_state in result_state or result_state in user_state or result_state == 'all' or 'all india' in result_state):
+                    # Match if: result is "All India" OR user state matches result state
+                    if 'all india' in result_state or result_state == 'all':
+                        is_match = True
+                    elif user_state and (user_state in result_state or result_state in user_state):
                         is_match = True
                         
                 elif self.index_name == 'upskill':
-                    # Upskill: location is "CITY, STATE" - check both
+                    # Upskill: location is "CITY, STATE" format
                     result_location = result.get('location', '').lower()
                     
-                    if ',' in result_location:
+                    # Match if: result is "All India" OR city/state matches
+                    if 'all india' in result_location or result_location == 'all':
+                        is_match = True
+                    elif ',' in result_location:
                         location_parts = [part.strip() for part in result_location.split(',')]
-                        # Match if user city/state is in any part
                         if (user_city and any(user_city in part or part in user_city for part in location_parts)) or \
                            (user_state and any(user_state in part or part in user_state for part in location_parts)):
                             is_match = True
@@ -128,9 +133,13 @@ class BaseAgent:
                             is_match = True
                             
                 else:
-                    # Jobs: match against city
+                    # Jobs: match against location field
                     result_location = result.get('location', '').lower()
-                    if user_city and (user_city in result_location or result_location in user_city or result_location == 'all india'):
+                    
+                    # Match if: result is "All India" OR city matches
+                    if 'all india' in result_location or result_location == 'all':
+                        is_match = True
+                    elif user_city and (user_city in result_location or result_location in user_city):
                         is_match = True
                 
                 if is_match:
