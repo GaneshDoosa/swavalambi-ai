@@ -281,24 +281,41 @@ class PostgresPgVectorStore(VectorStore):
                 
                 # Define columns for each table (hardcoded to avoid information_schema query)
                 if index_name == 'jobs':
-                    columns = ['id', 'title', 'description', 'company', 'skills', 'location', 'job_type', 'vacancies', 'min_salary', 'max_salary', 'experience']
+                    columns = ['id', 'title', 'description', 'company', 'skills', 'location', 'job_type', 'vacancies', 'min_salary', 'max_salary', 'experience', 'ai_classified_job']
                 elif index_name == 'schemes':
-                    columns = ['id', 'name', 'ministry', 'description', 'categories', 'tags', 'state', 'level', 'url']
+                    columns = ['id', 'name', 'ministry', 'description', 'categories', 'tags', 'state', 'level', 'url', 'ai_classified_scheme']
                 elif index_name == 'upskill':
-                    columns = ['id', 'name', 'description', 'provider', 'skills', 'location', 'address', 'contact', 'email']
+                    columns = ['id', 'name', 'description', 'provider', 'skills', 'location', 'address', 'contact', 'email', 'ai_classified_training']
                 else:
                     columns = ['id']
                 
                 columns_str = ', '.join(columns)
                 
-                # Build WHERE clause for filters (only for jobs table)
-                where_clause = ""
+                # Build WHERE clause for filters
+                where_clauses = []
                 params = [query_vec]  # First param for SELECT score calculation
                 
+                # Salary filter for jobs
                 if filters and filters.get('min_salary') and index_name == 'jobs':
-                    # Filter: max_salary >= user's expectation OR max_salary is 0/NULL (not specified)
-                    where_clause = "WHERE (max_salary >= %s OR max_salary = 0 OR max_salary IS NULL)"
+                    where_clauses.append("(max_salary >= %s OR max_salary = 0 OR max_salary IS NULL)")
                     params.append(filters['min_salary'])
+                
+                # Profession filter based on AI classification
+                if filters and filters.get('profession'):
+                    profession = filters['profession'].lower()
+                    if index_name == 'jobs':
+                        where_clauses.append("ai_classified_job = %s")
+                        params.append(profession)
+                    elif index_name == 'schemes':
+                        where_clauses.append("ai_classified_scheme = %s")
+                        params.append(profession)
+                    elif index_name == 'upskill':
+                        where_clauses.append("ai_classified_training = %s")
+                        params.append(profession)
+                
+                where_clause = ""
+                if where_clauses:
+                    where_clause = "WHERE " + " AND ".join(where_clauses)
                 
                 # Add remaining vector params
                 params.extend([query_vec, limit])  # For ORDER BY and LIMIT

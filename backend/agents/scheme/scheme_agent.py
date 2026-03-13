@@ -60,43 +60,14 @@ class SchemeAgent(BaseAgent):
         return ' '.join(filter(None, query_parts))
     
     def calculate_eligibility_score(self, scheme: dict, user_profile: dict) -> float:
-        """Calculate eligibility score with improved profession matching"""
-        score = 0.0
+        """Calculate eligibility score — profession filtering is done at SQL level via ai_classified_scheme"""
+        score = 0.4  # Base score for all results (already filtered by profession in SQL)
         
-        user_skill = user_profile.get("skill", "").lower()
-        scheme_categories = [c.lower() for c in scheme.get("categories", [])]
-        scheme_tags = [t.lower() for t in scheme.get("tags", [])]
-        scheme_name = scheme.get("name", "").lower()
-        scheme_desc = scheme.get("description", "").lower()
-        
-        # Profession-specific scoring with more targeted matching
-        profession_keywords = {
-            'carpenter': ['carpenter', 'carpentry', 'woodwork', 'wood', 'furniture', 'joinery', 'cabinet', 'timber', 'construction', 'building'],
-            'plumber': ['plumber', 'plumbing', 'pipe', 'sanitary', 'drainage', 'water supply', 'fitting', 'pipeline', 'construction', 'building'],
-            'welder': ['welder', 'welding', 'metal', 'fabrication', 'steel', 'iron', 'construction', 'building', 'manufacturing'],
-            'beautician': ['beautician', 'beauty', 'salon', 'cosmetic', 'makeup', 'hair', 'spa', 'skincare', 'grooming', 'wellness'],
-            'tailor': ['tailor', 'tailoring', 'sewing', 'stitching', 'garment', 'textile', 'fashion', 'apparel', 'clothing', 'fabric']
-        }
-        
-        # Check for profession match in various fields
-        if user_skill in profession_keywords:
-            keywords = profession_keywords[user_skill]
-            
-            # Direct profession match (highest score)
-            if any(kw in scheme_name or kw in scheme_desc for kw in keywords[:4]):  # First 4 are most specific
-                score += 0.5
-            # Broader category match
-            elif any(kw in ' '.join(scheme_categories + scheme_tags) for kw in keywords[:6]):  # First 6 keywords
-                score += 0.3
-            # Construction/building related (for carpenter, plumber, welder)
-            elif user_skill in ['carpenter', 'plumber', 'welder'] and any(kw in ' '.join(scheme_categories + scheme_tags) for kw in ['construction', 'building', 'worker']):
-                score += 0.2
-            # Generic artisan/craftsman schemes (fallback with lower score)
-            elif any(kw in ' '.join(scheme_categories + scheme_tags) for kw in ['artisan', 'craftsman', 'vishwakarma', 'skill']):
-                score += 0.1
-        
-        # Intent matching
+        # Intent matching bonus
         user_intent = user_profile.get("intent", "").lower()
+        scheme_desc = scheme.get("description", "").lower()
+        scheme_tags = [t.lower() for t in scheme.get("tags", [])]
+        
         intent_keywords = {
             "job": ["employment", "job", "placement"],
             "upskill": ["training", "skill", "course", "education", "development"],
@@ -108,13 +79,12 @@ class SchemeAgent(BaseAgent):
                 score += 0.3
         
         # Skill level bonus
-        user_level = user_profile.get("skill_level", 0)
-        if user_level >= 3:
+        if user_profile.get("skill_level", 0) >= 3:
+            score += 0.2
+        elif user_profile.get("skill_level", 0) >= 1:
             score += 0.1
-        elif user_level >= 1:
-            score += 0.05
         
-        # State matching
+        # State preference bonus
         user_state = user_profile.get("state", "").lower()
         scheme_state = scheme.get("state", "").lower()
         if not scheme_state or scheme_state == "all india" or scheme_state == "all" or user_state in scheme_state:
@@ -122,11 +92,14 @@ class SchemeAgent(BaseAgent):
         
         return min(score, 1.0)
     
-    def search_schemes(self, user_profile: dict, limit: int = 10, query_embedding: list[float] = None) -> list[dict]:
-        results = self.search(user_profile, limit, query_embedding=query_embedding)
+    def search_schemes(self, user_profile: dict, limit: int = 10, query_embedding: list[float] = None, filters: dict = None) -> list[dict]:
+        # Fetch results - profession already filtered at SQL level, location-sorted by base_agent
+        results = self.search(user_profile, limit, query_embedding=query_embedding, filters=filters)
+        
         # Add full URL for each scheme
         for scheme in results:
             slug = scheme.get('url', '')
             if slug:
                 scheme['url'] = f"https://www.myscheme.gov.in/schemes/{slug}"
-        return results
+        
+        return results[:limit]

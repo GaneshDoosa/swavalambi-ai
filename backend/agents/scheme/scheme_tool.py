@@ -33,7 +33,7 @@ def search_schemes_tool(skill: str, intent: str, skill_level: int, state: str, q
         "state": state
     }
     
-    return agent.search_schemes(user_profile, limit=5, query_embedding=query_embedding)
+    return agent.search_schemes(user_profile, limit=10, query_embedding=query_embedding)
 
 SCHEME_TOOL_DEFINITION = {
     "name": "search_schemes",

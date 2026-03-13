@@ -31,7 +31,7 @@ def search_upskill_tool(skill: str, skill_level: int, state: str, query_embeddin
         "state": state
     }
     
-    return agent.search_courses(user_profile, limit=5, query_embedding=query_embedding)
+    return agent.search_courses(user_profile, limit=10, query_embedding=query_embedding)
 
 UPSKILL_TOOL_DEFINITION = {
     "name": "search_upskill",
