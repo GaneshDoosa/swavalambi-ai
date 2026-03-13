@@ -3,6 +3,14 @@ from strands.models import BedrockModel, AnthropicModel
 import boto3
 import os
 import json
+import logging
+
+logger = logging.getLogger(__name__)
+
+try:
+    from common.bedrock_prompt_loader import get_prompt_text as _get_bedrock_prompt
+except ImportError:
+    _get_bedrock_prompt = None
 
 # Supported skills - limited to these 5 only
 SUPPORTED_SKILLS = {
@@ -120,7 +128,7 @@ class ProfilingAgent:
             known_user_context = ""
 
         # Language mapping for instruction
-        language_names = {
+        language_names: dict[str, str] = {
             "hi-IN": "Hindi (हिंदी)",
             "te-IN": "Telugu (తెలుగు)",
             "ta-IN": "Tamil (தமிழ்)",
@@ -134,7 +142,72 @@ class ProfilingAgent:
         }
         user_language = language_names.get(preferred_language, "English")
 
-        self.system_prompt = f"""
+        # -------------------------------------------------------------------------
+        # Load system prompt from Bedrock Prompt Management (with fallback)
+        # -------------------------------------------------------------------------
+        self.system_prompt = self._load_system_prompt(
+            user_language=user_language,
+            known_user_context=known_user_context,
+            preferred_language=preferred_language,
+        )
+
+        # Create the Strands Agent with the system prompt
+        self.agent = Agent(
+            model=self.primary_model,
+            system_prompt=self.system_prompt,
+        )
+
+        # Create fallback agent with Nova
+        self.fallback_agent = Agent(
+            model=self.fallback_model,
+            system_prompt=self.system_prompt,
+        )
+
+    def _load_system_prompt(self, user_language: str, known_user_context: str, preferred_language: str) -> str:
+        """
+        Attempts to load the system prompt from AWS Bedrock Prompt Management.
+        Falls back to the hardcoded inline prompt if:
+          - BEDROCK_PROFILING_PROMPT_ID env var is not set, or
+          - the bedrock_prompt_loader is not importable, or
+          - the API call fails for any reason.
+        """
+        prompt_id = os.getenv("BEDROCK_PROFILING_PROMPT_ID", "").strip()
+        prompt_version = os.getenv("BEDROCK_PROFILING_PROMPT_VERSION") or os.getenv("BEDROCK_PROMPT_VERSION", "DRAFT")
+
+        if prompt_id and _get_bedrock_prompt is not None:
+            try:
+                text = _get_bedrock_prompt(
+                    prompt_id=prompt_id,
+                    version=prompt_version,
+                    variables={
+                        "user_language": user_language,
+                        "known_user_context": known_user_context,
+                        "preferred_language": preferred_language,
+                    },
+                    boto_session=self.boto3_session,
+                )
+                logger.info(
+                    "[ProfilingAgent] System prompt loaded from Bedrock Prompt Management "
+                    f"(id={prompt_id}, version={prompt_version})"
+                )
+                return text
+            except Exception as exc:
+                logger.warning(
+                    f"[ProfilingAgent] Failed to load prompt from Bedrock (id={prompt_id}): {exc}. "
+                    "Falling back to hardcoded prompt."
+                )
+        else:
+            if not prompt_id:
+                logger.info(
+                    "[ProfilingAgent] BEDROCK_PROFILING_PROMPT_ID not set — using hardcoded system prompt."
+                )
+
+        # ---- Hardcoded fallback prompt (original) --------------------------------
+        return self._hardcoded_system_prompt(user_language, known_user_context, preferred_language)
+
+    def _hardcoded_system_prompt(self, user_language: str, known_user_context: str, preferred_language: str) -> str:
+        """Returns the original hardcoded system prompt (used as fallback)."""
+        return f"""
         You are 'Swavalambi Assistant', a supportive, friendly, and encouraging AI profiler for skilled workers and artisans in India.
         Your goal is to have a natural, engaging conversation to build a comprehensive profile. Extract the following information:
         {known_user_context}

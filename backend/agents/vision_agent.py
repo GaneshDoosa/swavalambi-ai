@@ -2,7 +2,19 @@ import boto3
 import json
 import base64
 import os
+import logging
 import anthropic
+
+logger = logging.getLogger(__name__)
+
+try:
+    from common.bedrock_prompt_loader import (
+        get_prompt_text as _get_bedrock_prompt,
+        get_prompt_parts as _get_bedrock_prompt_parts,
+    )
+except ImportError:
+    _get_bedrock_prompt = None
+    _get_bedrock_prompt_parts = None
 
 class VisionAgent:
     def __init__(self):
@@ -29,6 +41,14 @@ class VisionAgent:
             )
             # Use the same model for vision — Claude Sonnet 4.5 supports vision
             self.model_id = os.getenv("BEDROCK_MODEL_ID", "global.anthropic.claude-sonnet-4-5-20250929-v1:0")
+
+        # Shared boto3 session for Bedrock Prompt Management
+        self._boto3_session = boto3.Session(
+            aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+            aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
+            aws_session_token=os.getenv('AWS_SESSION_TOKEN'),
+            region_name=os.getenv('AWS_DEFAULT_REGION', 'us-east-1'),
+        )
 
 
     def analyze_image(self, image_bytes: bytes, mime_type: str = "image/jpeg", skill: str = None, preferred_language: str = "en-IN") -> dict:
@@ -63,46 +83,37 @@ class VisionAgent:
         }
         
         skill_context = skill_prompts.get(skill, "Evaluate this work sample for quality and craftsmanship.") if skill else "Evaluate this work sample for quality and craftsmanship."
-        
-        system_prompt = f"You are a master evaluator of {skill or 'professional'} skills and craftsmanship. Provide honest, constructive feedback. Output ONLY valid JSON, nothing else. {language_instruction}."
-        
-        prompt = f"""
-        {skill_context}
-        
-        IMPORTANT: {language_instruction}. Write your feedback in the user's language.
-        
-        Provide a 'vision_score' between 1 and 5 indicating the quality of the work:
-        1 = Beginner/Poor quality
-        2 = Developing/Below average
-        3 = Intermediate/Average
-        4 = Advanced/Good quality
-        5 = Expert/Excellent quality
-        
-        Also provide 'feedback' (2-3 sentences) explaining what you observe - be specific about strengths and areas for improvement.
-        
-        ⚠️ CRITICAL OUTPUT RULES - FOLLOW EXACTLY:
-        1. Output ONLY valid JSON with exactly 2 fields: vision_score and feedback
-        2. The feedback field should contain ONLY your assessment of the work quality
-        3. DO NOT add any text before or after the JSON
-        4. DO NOT mention: "Level", "assigned", "dashboard", "redirecting", "personalized"
-        5. DO NOT add congratulations or next steps - ONLY evaluate the work shown
-        6. Write feedback in {preferred_language.split('-')[0]} language
-        7. Keep feedback focused on: technique, quality, craftsmanship, areas to improve
-        
-        CORRECT OUTPUT EXAMPLE:
-        {{
-            "vision_score": 4,
-            "feedback": "The stitching shows good attention to detail and the fabric handling is neat. The seam alignment could be improved for a more professional finish."
-        }}
-        
-        WRONG OUTPUT (DO NOT DO THIS):
-        {{
-            "vision_score": 4,
-            "feedback": "Great work! You have been assigned Level 4. Redirecting you to your dashboard..."
-        }}
-        
-        Now evaluate the work sample and output ONLY the JSON.
-        """
+
+        # -----------------------------------------------------------------
+        # Load prompts from Bedrock Prompt Management (with fallback)
+        # -----------------------------------------------------------------
+        prompt_version = os.getenv("BEDROCK_VISION_PROMPT_VERSION") or os.getenv("BEDROCK_PROMPT_VERSION", "DRAFT")
+        prompt_variables = {
+            "skill": skill or "professional",
+            "language_instruction": language_instruction,
+            "preferred_language": preferred_language,
+            "skill_context": skill_context,
+        }
+
+        vision_prompt_id = os.getenv("BEDROCK_VISION_PROMPT_ID", "").strip()
+        if vision_prompt_id and _get_bedrock_prompt_parts is not None:
+            try:
+                parts = _get_bedrock_prompt_parts(
+                    prompt_id=vision_prompt_id,
+                    version=prompt_version,
+                    variables=prompt_variables,
+                    boto_session=self._boto3_session,
+                )
+                system_prompt = parts["system"] or f"You are a master evaluator of {skill or 'professional'} skills and craftsmanship. Provide honest, constructive feedback. Output ONLY valid JSON, nothing else. {language_instruction}."
+                prompt = parts["user"] or self._hardcoded_user_prompt(skill_context, language_instruction, preferred_language)
+                logger.info("[VisionAgent] Prompts loaded from Bedrock Prompt Management (single prompt).")
+            except Exception as exc:
+                logger.warning(f"[VisionAgent] Failed to load from Bedrock (id={vision_prompt_id}): {exc}. Using hardcoded fallback.")
+                system_prompt = f"You are a master evaluator of {skill or 'professional'} skills and craftsmanship. Provide honest, constructive feedback. Output ONLY valid JSON, nothing else. {language_instruction}."
+                prompt = self._hardcoded_user_prompt(skill_context, language_instruction, preferred_language)
+        else:
+            system_prompt = f"You are a master evaluator of {skill or 'professional'} skills and craftsmanship. Provide honest, constructive feedback. Output ONLY valid JSON, nothing else. {language_instruction}."
+            prompt = self._hardcoded_user_prompt(skill_context, language_instruction, preferred_language)
 
         try:
             if self.use_anthropic:
@@ -201,3 +212,43 @@ class VisionAgent:
                 "vision_score": 3,
                 "feedback": "Fallback score. Unable to process image due to internal error."
             }
+
+    def _hardcoded_user_prompt(self, skill_context: str, language_instruction: str, preferred_language: str) -> str:
+        """Returns the original hardcoded evaluation user prompt (used as fallback)."""
+        return f"""
+        {skill_context}
+        
+        IMPORTANT: {language_instruction}. Write your feedback in the user's language.
+        
+        Provide a 'vision_score' between 1 and 5 indicating the quality of the work:
+        1 = Beginner/Poor quality
+        2 = Developing/Below average
+        3 = Intermediate/Average
+        4 = Advanced/Good quality
+        5 = Expert/Excellent quality
+        
+        Also provide 'feedback' (2-3 sentences) explaining what you observe - be specific about strengths and areas for improvement.
+        
+        ⚠️ CRITICAL OUTPUT RULES - FOLLOW EXACTLY:
+        1. Output ONLY valid JSON with exactly 2 fields: vision_score and feedback
+        2. The feedback field should contain ONLY your assessment of the work quality
+        3. DO NOT add any text before or after the JSON
+        4. DO NOT mention: "Level", "assigned", "dashboard", "redirecting", "personalized"
+        5. DO NOT add congratulations or next steps - ONLY evaluate the work shown
+        6. Write feedback in {preferred_language.split('-')[0]} language
+        7. Keep feedback focused on: technique, quality, craftsmanship, areas to improve
+        
+        CORRECT OUTPUT EXAMPLE:
+        {{
+            "vision_score": 4,
+            "feedback": "The stitching shows good attention to detail and the fabric handling is neat. The seam alignment could be improved for a more professional finish."
+        }}
+        
+        WRONG OUTPUT (DO NOT DO THIS):
+        {{
+            "vision_score": 4,
+            "feedback": "Great work! You have been assigned Level 4. Redirecting you to your dashboard..."
+        }}
+        
+        Now evaluate the work sample and output ONLY the JSON.
+        """
