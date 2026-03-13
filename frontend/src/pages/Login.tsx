@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { ArrowLeft, Mail, Lock, Eye, EyeOff } from "lucide-react";
-import heroBanner from "../assets/herobanner.png";
-import carpentry from "../assets/carpentry.png";
-import plumbing from "../assets/plumbing.png";
-import tailor from "../assets/tailor.png";
+import tailor from "../assets/tailor.jpg";
+import beautician from "../assets/beautician.jpg"
+import welder from "../assets/welder.jpg"
+import electrician from "../assets/electrician.jpg"
+import plumber from "../assets/plumber.jpg"
+
 import { API_BASE } from "../config/api";
 
 export default function Login() {
@@ -18,7 +20,7 @@ export default function Login() {
   const navigate = useNavigate();
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const images = [heroBanner, carpentry, plumbing, tailor];
+  const images = [beautician, tailor, electrician, welder, plumber];
 
   // Check for success message from navigation state
   useEffect(() => {
