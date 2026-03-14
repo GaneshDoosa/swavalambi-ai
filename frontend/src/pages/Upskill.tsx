@@ -182,7 +182,7 @@ export default function Upskill() {
                   rel="noopener noreferrer"
                   className="block text-center w-full bg-primary text-white font-medium py-2.5 rounded-xl hover:bg-primary-dark transition-colors shadow-sm"
                 >
-                  View on Skill India
+                  Contact
                 </a>
               </div>
             ))}
