@@ -99,7 +99,7 @@ export default function Login() {
           />
         </div>
         <h2 className="text-slate-900 text-lg font-bold leading-tight tracking-[-0.015em] flex-1 text-center pr-12">
-          Swavalambi
+          Welcome
         </h2>
       </div>
 
@@ -138,10 +138,10 @@ export default function Login() {
       {/* Welcome Text */}
       <div className="px-6 pt-6 pb-2">
         <h2 className="text-slate-900 tracking-tight text-[32px] font-bold leading-tight text-center">
-          Welcome Back
+          Swavalambi AI
         </h2>
         <p className="text-slate-600 text-base text-center mt-2">
-          Log in to continue your journey
+          Empowering Skilled India
         </p>
       </div>
 

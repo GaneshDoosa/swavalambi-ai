@@ -264,16 +264,16 @@ export default function Assistant() {
 
   // Supported languages
   const languages = [
-    { code: "hi-IN", name: "हिंदी", nativeName: "Hindi", flag: "🇮🇳" },
-    { code: "te-IN", name: "తెలుగు", nativeName: "Telugu", flag: "🇮🇳" },
-    { code: "ta-IN", name: "தமிழ்", nativeName: "Tamil", flag: "🇮🇳" },
-    { code: "mr-IN", name: "मराठी", nativeName: "Marathi", flag: "🇮🇳" },
-    { code: "kn-IN", name: "ಕನ್ನಡ", nativeName: "Kannada", flag: "🇮🇳" },
-    { code: "bn-IN", name: "বাংলা", nativeName: "Bengali", flag: "🇮🇳" },
-    { code: "gu-IN", name: "ગુજરાતી", nativeName: "Gujarati", flag: "🇮🇳" },
-    { code: "ml-IN", name: "മലയാളം", nativeName: "Malayalam", flag: "🇮🇳" },
-    { code: "pa-IN", name: "ਪੰਜਾਬੀ", nativeName: "Punjabi", flag: "🇮🇳" },
-    { code: "en-IN", name: "English", nativeName: "English", flag: "🇬🇧" },
+    { code: "hi-IN", name: "हिंदी", nativeName: "Hindi" },
+    { code: "te-IN", name: "తెలుగు", nativeName: "Telugu" },
+    { code: "ta-IN", name: "தமிழ்", nativeName: "Tamil" },
+    { code: "mr-IN", name: "मराठी", nativeName: "Marathi" },
+    { code: "kn-IN", name: "ಕನ್ನಡ", nativeName: "Kannada" },
+    { code: "bn-IN", name: "বাংলা", nativeName: "Bengali" },
+    { code: "gu-IN", name: "ગુજરાતી", nativeName: "Gujarati" },
+    { code: "ml-IN", name: "മലയാളം", nativeName: "Malayalam" },
+    { code: "pa-IN", name: "ਪੰਜਾਬੀ", nativeName: "Punjabi" },
+    { code: "en-IN", name: "English", nativeName: "English" },
   ];
 
   // Multilingual greetings
@@ -1827,7 +1827,7 @@ export default function Assistant() {
             <ArrowLeft className="text-slate-700" />
           </Link>
           <div className="flex flex-col items-center">
-            <h1 className="text-lg font-bold leading-tight">AI Assistant</h1>
+            <h1 className="text-lg font-bold leading-tight">Swavalambi Assistant</h1>
             <div className="flex items-center gap-1">
               <span className="w-2 h-2 bg-green-500 rounded-full"></span>
               <span className="text-[10px] font-medium uppercase tracking-wider text-slate-500">
@@ -1855,9 +1855,6 @@ export default function Assistant() {
               title={`Language: ${getCurrentLanguage().nativeName}`}
             >
               <Globe className="text-slate-700" size={20} />
-              <span className="absolute -bottom-1 -right-1 text-xs">
-                {getCurrentLanguage().flag}
-              </span>
             </button>
             <button 
               onClick={() => setShowClearChatModal(true)}
@@ -1885,7 +1882,6 @@ export default function Assistant() {
                     : "hover:bg-slate-50 text-slate-700"
                 }`}
               >
-                <span className="text-2xl">{lang.flag}</span>
                 <div className="flex-1">
                   <div className="text-sm font-medium">{lang.name}</div>
                   <div className="text-xs text-slate-500">{lang.nativeName}</div>
@@ -2211,7 +2207,6 @@ export default function Assistant() {
                   onClick={() => handleLanguageSelect(lang.code)}
                   className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all hover:bg-primary/5 hover:scale-[1.02] border-2 border-transparent hover:border-primary/20"
                 >
-                  <span className="text-3xl">{lang.flag}</span>
                   <div className="flex-1">
                     <div className="text-base font-semibold text-slate-800">{lang.name}</div>
                     <div className="text-sm text-slate-500">{lang.nativeName}</div>

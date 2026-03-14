@@ -304,8 +304,8 @@ export default function Home() {
               />
             )}
             <div className="flex-1">
-              <p className="text-sm text-gray-500">Welcome back,</p>
-              <h1 className="text-2xl font-bold text-gray-800">{userName}</h1>
+              <p className="text-sm text-gray-500">Swavalambi — Empowering Skilled India</p>
+              <h1 className="text-2xl font-bold text-gray-800">Welcome, {userName}!</h1>
               <p className="text-gray-500 text-sm mt-1 capitalize">
                 {skill && `${skill} Professional`}
               </p>
