@@ -1207,11 +1207,36 @@ export default function Assistant() {
     }
   };
 
+  const resizeImage = (file: File, maxDimension = 1024): Promise<Blob> => {
+    return new Promise((resolve) => {
+      // Fallback: if canvas not supported, use original
+      if (typeof document === 'undefined' || !document.createElement('canvas').getContext) {
+        resolve(file);
+        return;
+      }
+      const img = new Image();
+      const objectUrl = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(objectUrl);
+        const { width, height } = img;
+        const scale = Math.min(1, maxDimension / Math.max(width, height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(width * scale);
+        canvas.height = Math.round(height * scale);
+        canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob((blob) => resolve(blob || file), file.type, 0.85);
+      };
+      img.onerror = () => { URL.revokeObjectURL(objectUrl); resolve(file); };
+      img.src = objectUrl;
+    });
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const url = URL.createObjectURL(file);
+    const resizedBlob = await resizeImage(file);
+    const url = URL.createObjectURL(resizedBlob);
 
     // Use robust unique IDs to prevent collisions
     const userMsgId = `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -1241,7 +1266,7 @@ export default function Assistant() {
       // Real call to FastAPI backend -> VisionAgent -> Bedrock Vision
       const formData = new FormData();
       formData.append("session_id", sessionId);
-      formData.append("photo", file);
+      formData.append("photo", resizedBlob, file.name);
       // Pass user identity so backend can persist assessment to DynamoDB
       const userId = localStorage.getItem("swavalambi_user_id") || "";
       const skill  = localStorage.getItem("swavalambi_skill") || "";
