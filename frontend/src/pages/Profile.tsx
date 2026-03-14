@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Settings, Star, FileText, Award, ShieldCheck, Bell, HelpCircle, LogOut, ChevronRight, Camera } from 'lucide-react';
 import BottomNav from '../components/BottomNav';
 import FloatingAssistant from '../components/FloatingAssistant';
@@ -23,6 +23,7 @@ const INTENT_LABELS: Record<string, string> = {
 
 export default function Profile() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [name, setName] = useState('');
   const [skill, setSkill] = useState('');
   const [skillRating, setSkillRating] = useState(0);
@@ -35,6 +36,14 @@ export default function Profile() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const accountSettingsRef = useRef<HTMLDivElement>(null);
   const { uploadProfilePicture, isUploading } = useProfilePictureUpload();
+
+  // Auto-open reassessment modal if navigated from Assistant page
+  useEffect(() => {
+    if (location.state?.openReassessment) {
+      setShowReassessmentWarning(true);
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
 
   const scrollToSettings = () => {
     accountSettingsRef.current?.scrollIntoView({ 
@@ -502,7 +511,7 @@ export default function Profile() {
                     ⚠️ This action will:
                   </p>
                   <ul className="text-xs text-amber-700 mt-2 space-y-1 ml-4">
-                    <li>• Reset your skill level to 0</li>
+                    <li>• Reset your skill level</li>
                     <li>• Clear your assessment history</li>
                     <li>• Remove your current profession verification</li>
                     <li>• Start a completely new assessment</li>

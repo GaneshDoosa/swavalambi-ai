@@ -255,8 +255,7 @@ export default function Assistant() {
   const [redirectPath, setRedirectPath] = useState("");
   const redirectTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Clear chat confirmation modal state
-  const [showClearChatModal, setShowClearChatModal] = useState(false);
+
 
   // Language selection modal state
   const [showLanguageModal, setShowLanguageModal] = useState(false);
@@ -887,35 +886,7 @@ export default function Assistant() {
     }
   };
 
-  const handleClearChat = async () => {
-    try {
-      const userId = localStorage.getItem("swavalambi_user_id");
-      
-      // Clear chat history in backend if user is logged in
-      if (userId) {
-        await fetch(`${API_BASE}/users/${userId}/chat-history`, {
-          method: "DELETE",
-        });
-      }
-      
-      // Clear local messages with multilingual greeting
-      const storedName = localStorage.getItem("swavalambi_name") || "";
-      const userName = storedName && !/^\+?\d{7,}$/.test(storedName.trim()) ? storedName : "";
-      const welcomeMessage = getGreeting(selectedLanguage, userName);
-      
-      setMessages([{ id: "msg-1", role: "assistant", content: welcomeMessage }]);
-      
-      // Clear session to start fresh
-      clearSession();
-      
-      // Close modal
-      setShowClearChatModal(false);
-      
-    } catch (error) {
-      console.error("Failed to clear chat history:", error);
-      alert("Failed to clear chat history. Please try again.");
-    }
-  };
+
 
   const handleSendMessage = async () => {
     if (!input.trim() || isLoading) return;
@@ -1875,9 +1846,9 @@ export default function Assistant() {
               <Globe className="text-slate-700" size={20} />
             </button>
             <button 
-              onClick={() => setShowClearChatModal(true)}
+              onClick={() => navigate('/profile', { state: { openReassessment: true } })}
               className="p-2 hover:bg-primary/10 rounded-full transition-colors"
-              title="Clear chat history"
+              title="Retake Assessment"
             >
               <History className="text-slate-700" />
             </button>
@@ -2236,38 +2207,7 @@ export default function Assistant() {
         </div>
       )}
 
-      {/* Clear Chat Confirmation Modal */}
-      {showClearChatModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl">
-            <div className="text-center">
-              <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                <History className="w-8 h-8 text-red-500" />
-              </div>
-              <h3 className="text-lg font-bold text-slate-800 mb-2">
-                Clear Chat History?
-              </h3>
-              <p className="text-sm text-slate-600 mb-6">
-                This will delete all messages and start a fresh conversation. Your profile data will be preserved.
-              </p>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowClearChatModal(false)}
-                  className="flex-1 px-4 py-2 bg-slate-100 text-slate-700 rounded-lg font-semibold hover:bg-slate-200 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleClearChat}
-                  className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg font-semibold hover:bg-red-600 transition-colors"
-                >
-                  Clear Chat
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+
 
       <BottomNav />
     </div>
