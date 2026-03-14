@@ -227,7 +227,7 @@ class VisionAgent:
         4 = Advanced/Good quality
         5 = Expert/Excellent quality
         
-        Also provide 'feedback' (2-3 sentences) explaining what you observe - be specific about strengths and areas for improvement.
+        Also provide 'feedback' (2 sentences max) explaining what you observe - one strength and one area to improve.
         
         ⚠️ CRITICAL OUTPUT RULES - FOLLOW EXACTLY:
         1. Output ONLY valid JSON with exactly 2 fields: vision_score and feedback
