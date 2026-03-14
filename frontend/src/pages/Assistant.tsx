@@ -230,6 +230,9 @@ export default function Assistant() {
   const [isLoading, setIsLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [selectedLanguage, setSelectedLanguage] = useState("hi-IN");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1370,6 +1373,16 @@ export default function Assistant() {
       recorder.start();
       setMediaRecorder(recorder);
       setIsRecording(true);
+      setRecordingSeconds(0);
+
+      // Auto-stop after 30 seconds
+      recordingIntervalRef.current = setInterval(() => {
+        setRecordingSeconds(prev => prev + 1);
+      }, 1000);
+      recordingTimerRef.current = setTimeout(() => {
+        stopRecording();
+      }, 15000);
+      
     } catch (error) {
       console.error("Microphone access denied:", error);
       alert("Please allow microphone access to use voice input");
@@ -1377,8 +1390,13 @@ export default function Assistant() {
   };
 
   const stopRecording = () => {
+    if (recordingTimerRef.current) clearTimeout(recordingTimerRef.current);
+    if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
+    recordingTimerRef.current = null;
+    recordingIntervalRef.current = null;
+    setRecordingSeconds(0);
     if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-      setIsLoading(true); // Show loading indicator immediately when mic is released
+      setIsLoading(true);
       mediaRecorder.stop();
       setIsRecording(false);
     }
@@ -2117,7 +2135,7 @@ export default function Assistant() {
                 className="w-12 h-12 bg-red-500 text-white rounded-full flex items-center justify-center shadow-lg animate-pulse"
                 title="Stop Recording"
               >
-                <div className="w-4 h-4 bg-white rounded-sm"></div>
+                <span className="text-xs font-bold">{15 - recordingSeconds}s</span>
               </button>
             ) : (
               <button
