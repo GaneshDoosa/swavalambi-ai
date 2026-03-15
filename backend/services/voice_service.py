@@ -455,6 +455,9 @@ class VoiceService:
         # Clean text before TTS (remove markdown and emojis)
         cleaned_text = clean_text_for_tts(text)
         
+        if not cleaned_text or len(cleaned_text.strip()) < 2:
+            raise ValueError(f"Text too short after cleaning: '{cleaned_text}'")
+        
         # Get speaker for cache key (needed for both AWS and Sarvam)
         lang_code = language_code.split('-')[0].upper()
         env_key = f"SARVAM_TTS_SPEAKER_{lang_code}"
@@ -548,8 +551,8 @@ class VoiceService:
             from services.voice_service import clean_text_for_tts
             cleaned = clean_text_for_tts(sentence)
             
-            if not cleaned or not cleaned.strip():
-                print(f"[WARN] Sentence {i+1} became empty after cleaning, skipping: {sentence[:50]}")
+            if not cleaned or len(cleaned.strip()) < 2:
+                print(f"[WARN] Sentence {i+1} too short after cleaning, skipping: {sentence[:50]}")
                 continue
             
             # Synthesize this sentence (uses cache internally, will clean again but that's ok)
