@@ -149,3 +149,4 @@ backend/test_sarvam_TTS.py
 backend/test_streaming.py
 backend/test_text_cleaning.py
 backend/agents/profiling_agent_backup.py
+task-def-dev.json

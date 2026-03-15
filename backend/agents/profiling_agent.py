@@ -21,39 +21,6 @@ SUPPORTED_SKILLS = {
     "beautician": ["beautician", "beauty", "makeup", "hair", "salon", "cosmetology"]
 }
 
-# Skill-specific questions based on job market analysis
-SKILL_QUESTIONS = {
-    "tailor": {
-        "specialization": "What type of tailoring work do you do? (**Men's wear**, **Women's wear**, **Alterations**, **Custom design**, **All types**)",
-        "fabric_skills": "Which fabrics can you work with? (**Cotton/basic**, **Silk/delicate**, **Synthetic**, **All fabrics**)",
-        "equipment": "Do you have your own sewing machine? (**Yes, own equipment**, **No, need workplace equipment**)",
-        "work_setting": "What work setting do you prefer? (**Factory/garment unit**, **Boutique/shop**, **Home-based**, **Any setting**)",
-    },
-    "carpenter": {
-        "specialization": "What type of carpentry work do you specialize in? (**Furniture making**, **Door/window fitting**, **Interior woodwork**, **Kitchen cabinets**, **All types**)",
-        "tools": "Do you have your own carpentry tools? (**Yes, complete tools**, **Yes, basic tools**, **No, need workplace tools**)",
-        "materials": "What materials can you work with? (**Wood (teak/pine)**, **Laminate/veneer**, **MDF/particle board**, **All materials**)",
-        "work_type": "What projects do you prefer? (**Residential**, **Commercial**, **Both**)",
-    },
-    "plumber": {
-        "specialization": "What type of plumbing work are you experienced in? (**Pipe fitting**, **Bathroom/kitchen installation**, **Repairs/maintenance**, **Drainage systems**, **All types**)",
-        "work_setting": "What type of work do you prefer? (**Residential**, **Commercial**, **Both**)",
-        "tools": "Do you have your own plumbing tools? (**Yes, complete tools**, **Yes, basic tools**, **No, need workplace tools**)",
-        "skills": "Can you handle? (**Water supply systems**, **Sanitary fittings**, **Drainage systems**, **All of the above**)",
-    },
-    "welder": {
-        "techniques": "What welding techniques do you know? (**Arc welding**, **Gas welding**, **MIG welding**, **TIG welding**, **Multiple techniques**)",
-        "materials": "What materials can you weld? (**Mild steel**, **Stainless steel**, **Aluminum**, **All metals**)",
-        "work_type": "What type of welding work do you do? (**Fabrication**, **Structural**, **Pipe welding**, **Repair/maintenance**, **All types**)",
-        "certification": "Do you have welding certifications? (**Yes, certified**, **No, but experienced**)",
-    },
-    "beautician": {
-        "services": "What beauty services can you provide? (**Hair cutting/styling**, **Makeup (daily/party)**, **Bridal makeup**, **Skincare/facials**, **Nail art**, **All services**)",
-        "specialization": "Do you have any special skills? (**Bridal makeup**, **Hair coloring**, **Skin treatment**, **General beautician**)",
-        "work_setting": "Where do you prefer to work? (**Beauty salon/parlor**, **Spa/wellness center**, **Freelance/home service**, **Any setting**)",
-        "certification": "Do you have beauty course certification? (**Yes, certified**, **No, but experienced**)",
-    }
-}
 
 def normalize_skill(skill_input: str) -> str:
     """
