@@ -21,14 +21,16 @@ class TTSCacheService:
         redis_password = os.getenv("REDIS_PASSWORD")
         
         try:
-            self.redis_client = redis.Redis(
+            pool = redis.ConnectionPool(
                 host=redis_host,
                 port=redis_port,
                 password=redis_password,
                 decode_responses=False,  # We store binary data
                 socket_connect_timeout=5,
-                socket_timeout=5
+                socket_timeout=5,
+                max_connections=20
             )
+            self.redis_client = redis.Redis(connection_pool=pool)
             # Test connection
             self.redis_client.ping()
             self.enabled = True
