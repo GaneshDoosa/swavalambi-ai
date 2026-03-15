@@ -37,7 +37,7 @@ export default function Schemes() {
     const userId = localStorage.getItem('swavalambi_user_id');
 
     const rating = ratingStr ? parseInt(ratingStr, 10) : 0;
-    setIsLocked(rating < 3);
+    setIsLocked(rating === 0);
     setSkill(skillStr || 'artisan');
 
     // Check if user has completed assessment
