@@ -214,41 +214,16 @@ class VisionAgent:
             }
 
     def _hardcoded_user_prompt(self, skill_context: str, language_instruction: str, preferred_language: str) -> str:
-        """Returns the original hardcoded evaluation user prompt (used as fallback)."""
-        return f"""
-        {skill_context}
-        
-        IMPORTANT: {language_instruction}. Write your feedback in the user's language.
-        
-        Provide a 'vision_score' between 1 and 5 indicating the quality of the work:
-        1 = Beginner/Poor quality
-        2 = Developing/Below average
-        3 = Intermediate/Average
-        4 = Advanced/Good quality
-        5 = Expert/Excellent quality
-        
-        Also provide 'feedback' (2 sentences max) explaining what you observe - one strength and one area to improve.
-        
-        ⚠️ CRITICAL OUTPUT RULES - FOLLOW EXACTLY:
-        1. Output ONLY valid JSON with exactly 2 fields: vision_score and feedback
-        2. The feedback field should contain ONLY your assessment of the work quality
-        3. DO NOT add any text before or after the JSON
-        4. DO NOT mention: "Level", "assigned", "dashboard", "redirecting", "personalized"
-        5. DO NOT add congratulations or next steps - ONLY evaluate the work shown
-        6. Write feedback in {preferred_language.split('-')[0]} language
-        7. Keep feedback focused on: technique, quality, craftsmanship, areas to improve
-        
-        CORRECT OUTPUT EXAMPLE:
-        {{
-            "vision_score": 4,
-            "feedback": "The stitching shows good attention to detail and the fabric handling is neat. The seam alignment could be improved for a more professional finish."
-        }}
-        
-        WRONG OUTPUT (DO NOT DO THIS):
-        {{
-            "vision_score": 4,
-            "feedback": "Great work! You have been assigned Level 4. Redirecting you to your dashboard..."
-        }}
-        
-        Now evaluate the work sample and output ONLY the JSON.
-        """
+        """Returns the user prompt loaded from the external text file."""
+        prompt_path = os.path.join(os.path.dirname(__file__), "prompts", "vision_prompt.txt")
+        try:
+            with open(prompt_path, "r", encoding="utf-8") as f:
+                template = f.read()
+            return template.format(
+                skill_context=skill_context,
+                language_instruction=language_instruction,
+                short_pref_lang=preferred_language.split('-')[0]
+            )
+        except Exception as e:
+            logger.error(f"Failed to load vision_prompt.txt: {e}")
+            return f"{skill_context}\n\nProvide valid JSON with 'vision_score' (1-5) and 'feedback' in {preferred_language}."

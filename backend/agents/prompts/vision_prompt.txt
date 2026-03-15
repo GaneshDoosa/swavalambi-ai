@@ -1,0 +1,35 @@
+{skill_context}
+
+IMPORTANT: {language_instruction}. Write your feedback in the user's language.
+
+Provide a 'vision_score' between 1 and 5 indicating the quality of the work:
+1 = Beginner/Poor quality
+2 = Developing/Below average
+3 = Intermediate/Average
+4 = Advanced/Good quality
+5 = Expert/Excellent quality
+
+Also provide 'feedback' (2-3 sentences) explaining what you observe - be specific about strengths and areas for improvement.
+
+⚠️ CRITICAL OUTPUT RULES - FOLLOW EXACTLY:
+1. Output ONLY valid JSON with exactly 2 fields: vision_score and feedback
+2. The feedback field should contain ONLY your assessment of the work quality
+3. DO NOT add any text before or after the JSON
+4. DO NOT mention: "Level", "assigned", "dashboard", "redirecting", "personalized"
+5. DO NOT add congratulations or next steps - ONLY evaluate the work shown
+6. Write feedback in {short_pref_lang} language
+7. Keep feedback focused on: technique, quality, craftsmanship, areas to improve
+
+CORRECT OUTPUT EXAMPLE:
+{{
+    "vision_score": 4,
+    "feedback": "The stitching shows good attention to detail and the fabric handling is neat. The seam alignment could be improved for a more professional finish."
+}}
+
+WRONG OUTPUT (DO NOT DO THIS):
+{{
+    "vision_score": 4,
+    "feedback": "Great work! You have been assigned Level 4. Redirecting you to your dashboard..."
+}}
+
+Now evaluate the work sample and output ONLY the JSON.

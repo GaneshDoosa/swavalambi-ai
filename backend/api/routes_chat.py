@@ -36,21 +36,29 @@ async def chat_profile(request: ChatRequest):
     is_new_session = not has_agent_session(request.session_id)
     
     if is_new_session:
-        # Get user's preferred language
+        # Get user's preferred language and check if photo is uploaded
         preferred_language = "en-IN"  # default
+        has_uploaded_photo = False
         if request.user_id:
             try:
                 from services.dynamodb_service import get_user
                 user_data = get_user(request.user_id)
-                if user_data and "preferred_language" in user_data:
-                    preferred_language = user_data["preferred_language"]
+                if user_data:
+                    if "preferred_language" in user_data:
+                        preferred_language = user_data["preferred_language"]
+                    
+                    # Check if photo is already uploaded
+                    profile_assessment = user_data.get("profile_assessment", {})
+                    if profile_assessment.get("work_sample_score") is not None:
+                        has_uploaded_photo = True
             except Exception as e:
-                logger.warning("Failed to get preferred language: %s", e)
+                logger.warning("Failed to get user data: %s", e)
         
         set_agent_session(request.session_id, ProfilingAgent(
             session_id=request.session_id,
             user_name=request.user_name or "",
-            preferred_language=preferred_language
+            preferred_language=preferred_language,
+            has_uploaded_photo=has_uploaded_photo
         ))
         
         # If user_id is provided, try to restore previous chat history
@@ -312,21 +320,29 @@ async def chat_profile_stream(request: ChatRequest):
     is_new_session = not has_agent_session(request.session_id)
     
     if is_new_session:
-        # Get user's preferred language
+        # Get user's preferred language and check if photo is uploaded
         preferred_language = "en-IN"
+        has_uploaded_photo = False
         if request.user_id:
             try:
                 from services.dynamodb_service import get_user
                 user_data = get_user(request.user_id)
-                if user_data and "preferred_language" in user_data:
-                    preferred_language = user_data["preferred_language"]
+                if user_data:
+                    if "preferred_language" in user_data:
+                        preferred_language = user_data["preferred_language"]
+                    
+                    # Check if photo is already uploaded
+                    profile_assessment = user_data.get("profile_assessment", {})
+                    if profile_assessment.get("work_sample_score") is not None:
+                        has_uploaded_photo = True
             except Exception as e:
-                logger.warning("Failed to get preferred language: %s", e)
+                logger.warning("Failed to get user data: %s", e)
         
         set_agent_session(request.session_id, ProfilingAgent(
             session_id=request.session_id,
             user_name=request.user_name or "",
-            preferred_language=preferred_language
+            preferred_language=preferred_language,
+            has_uploaded_photo=has_uploaded_photo
         ))
         
         # Restore chat history if available
@@ -412,6 +428,12 @@ async def chat_profile_stream(request: ChatRequest):
             # CRITICAL: Use last_full_response which contains the unfiltered response with markers
             actual_full_response = getattr(agent, 'last_full_response', full_response)
             result = agent._process_response(actual_full_response)
+            
+            # Check final output against the strict backend flag
+            if getattr(agent, "has_uploaded_photo", False):
+                result["is_ready_for_photo"] = False
+            
+            print(f"Final is_ready_for_photo: {result.get('is_ready_for_photo', False)}")
             
             # Save chat history
             if request.user_id:

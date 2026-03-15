@@ -258,6 +258,22 @@ async def analyze_vision(
                 })
                 
                 update_chat_history(user_id, chat_history)
+
+                # Inject the upload event into the active agent session if it exists
+                from common.agent_sessions import has_agent_session, get_agent_session
+                if has_agent_session(session_id):
+                    agent_session = get_agent_session(session_id)
+                    # Mark the session so the chat route suppresses is_ready_for_photo
+                    agent_session.has_uploaded_photo = True
+                    if hasattr(agent_session.agent, "messages"):
+                        agent_session.agent.messages.append({
+                            "role": "user", 
+                            "content": [{"text": "I have successfully uploaded my work sample photo."}]
+                        })
+                        agent_session.agent.messages.append({
+                            "role": "assistant", 
+                            "content": [{"text": result['feedback']}]
+                        })
         except Exception as e:
             logger.warning(f"Failed to upload photo or update chat history: {e}")
 

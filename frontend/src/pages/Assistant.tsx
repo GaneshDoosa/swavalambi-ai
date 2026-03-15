@@ -1302,7 +1302,8 @@ export default function Assistant() {
         prev.map((msg) =>
           msg.id === assistantMsgId
             ? { ...msg, content: result.feedback }
-            : msg
+            // Also ensure we clear the flag on previous messages so consecutive upload buttons don't show
+            : { ...msg, isReadyForPhoto: false }
         )
       );
 
