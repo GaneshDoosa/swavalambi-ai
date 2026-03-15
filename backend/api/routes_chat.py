@@ -1,9 +1,11 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-from schemas.models import ChatRequest, ChatResponse
+from schemas.models import ChatRequest, ChatResponse, LanguageUpdateRequest
 from agents.profiling_agent import ProfilingAgent
 from services.dynamodb_service import update_chat_history
 from common.agent_sessions import get_agent_session, set_agent_session, has_agent_session
+from common.text_utils import strip_profile_markers as _strip_profile_markers
+from common.chat_persistence import save_agent_history
 import asyncio
 import warnings
 import logging
@@ -27,20 +29,6 @@ logger.propagate = False
 router = APIRouter()
 
 
-def _strip_profile_markers(text: str) -> str:
-    """
-    Remove PROFILE_DATA_START...PROFILE_DATA_END blocks (and the JSON inside)
-    from a message string. Returns the cleaned text.
-    This prevents internal profile JSON from leaking into the chat UI or
-    being re-stored in DynamoDB when old contaminated records are restored.
-    """
-    start_marker = "PROFILE_DATA_START"
-    end_marker = "PROFILE_DATA_END"
-    while start_marker in text and end_marker in text:
-        s = text.find(start_marker)
-        e = text.find(end_marker) + len(end_marker)
-        text = (text[:s].strip() + "\n\n" + text[e:].strip()).strip()
-    return text
 
 
 @router.post("/chat-profile", response_model=ChatResponse, summary="AI Gateway chat using Strands")
@@ -184,6 +172,12 @@ async def chat_profile(request: ChatRequest):
         
     agent = get_agent_session(request.session_id)
     
+    # Sync language if it changed mid-session
+    if request.language and hasattr(agent, "preferred_language") and agent.preferred_language != request.language:
+        logger.info("Language mismatch detected in session %s. Updating from %s to %s", 
+                    request.session_id, agent.preferred_language, request.language)
+        agent.update_language(request.language)
+    
     try:
         # Get response from the Strands LLM — run blocking sync call in thread pool
         # to prevent freezing the event loop (which blocks all other requests)
@@ -198,95 +192,9 @@ async def chat_profile(request: ChatRequest):
                 if hasattr(agent.agent, "messages") and agent.agent.messages:
                     raw_messages = agent.agent.messages
                     logger.debug("Found %d raw messages in agent.messages", len(raw_messages))
-                    # Serialize messages for DynamoDB storage
-                    serialized_chat = []
-                    
-                    for idx, msg in enumerate(raw_messages):
-                        role = None
-                        content_str = ""
-                        
-                        logger.debug("Processing message %d: type=%s", idx, type(msg))
-                        
-                        # Extract role
-                        if isinstance(msg, dict):
-                            role = msg.get("role")
-                            content = msg.get("content")
-                        elif hasattr(msg, "role"):
-                            role = msg.role
-                            content = msg.content if hasattr(msg, "content") else None
-                        else:
-                            logger.debug("Message %d has no role attribute, skipping", idx)
-                            continue
-                        
-                        if not role:
-                            logger.debug("Message %d has empty role, skipping", idx)
-                            continue
-                        
-                        logger.debug("Message %d role=%s, content type=%s", idx, role, type(content))
-                        
-                        # Extract text from content (handle various formats)
-                        if content is None:
-                            content_str = ""
-                        elif isinstance(content, str):
-                            content_str = content
-                        elif isinstance(content, list):
-                            # Handle list of content blocks
-                            text_parts = []
-                            for block in content:
-                                # Try different ways to extract text
-                                if isinstance(block, str):
-                                    text_parts.append(block)
-                                elif isinstance(block, dict):
-                                    if "text" in block:
-                                        text_parts.append(str(block["text"]))
-                                elif hasattr(block, "text"):
-                                    text_parts.append(str(block.text))
-                                elif hasattr(block, "__dict__") and "text" in block.__dict__:
-                                    text_parts.append(str(block.__dict__["text"]))
-                            content_str = " ".join(text_parts).strip()
-                        else:
-                            # Fallback: convert to string
-                            content_str = str(content)
-                        
-                        logger.debug("Message %d extracted content length: %d", idx, len(content_str))
-                        
-                        # IMPORTANT: Strip out PROFILE_DATA markers before saving to chat history
-                        # These markers and the JSON inside are for backend parsing only and should not be shown to users
-                        if "PROFILE_DATA_START" in content_str and "PROFILE_DATA_END" in content_str:
-                            logger.debug("Found PROFILE_DATA markers in message %d, stripping them out", idx)
-                            start_marker = "PROFILE_DATA_START"
-                            end_marker = "PROFILE_DATA_END"
-                            start_idx = content_str.find(start_marker)
-                            end_idx = content_str.find(end_marker) + len(end_marker)
-                            
-                            # Remove everything from start_marker to end_marker (inclusive)
-                            # This removes the JSON profile data so it doesn't appear in chat history
-                            content_before = content_str[:start_idx].strip()
-                            content_after = content_str[end_idx:].strip()
-                            
-                            # Combine the parts, keeping only the user-facing message
-                            content_str = (content_before + "\n\n" + content_after).strip()
-                            logger.debug("Stripped PROFILE_DATA, new content length: %d", len(content_str))
-                        
-                        if content_str:  # Only add if we have content
-                            serialized_chat.append({
-                                "role": role,
-                                "content": content_str
-                            })
-                    
-                    logger.debug("Serialized %d messages", len(serialized_chat))
-                    
-                    if serialized_chat:
-                        update_chat_history(request.user_id, serialized_chat)
-                        logger.info("Saved %d messages to DynamoDB for user %s", len(serialized_chat), request.user_id)
-                    else:
-                        logger.warning("No messages to save - serialized_chat is empty")
-                else:
-                    logger.warning("Agent has no messages attribute or messages is empty")
+                save_agent_history(agent, request.user_id)
             except Exception as e:
                 logger.warning("Failed to persist chat history to DynamoDB: %s", e)
-                import traceback
-                traceback.print_exc()
         
         # Save profile assessment data if complete
         if request.user_id and result.get("profile_data"):
@@ -319,6 +227,26 @@ async def chat_profile(request: ChatRequest):
     except Exception as e:
         logger.error("Agent error: %s", e)
         raise HTTPException(status_code=500, detail="Failed to communicate with AI Gateway.")
+
+
+@router.put("/chat-profile/language", summary="Update language for an active agent session")
+async def update_agent_language(request: LanguageUpdateRequest):
+    """
+    Update the language of an existing ProfilingAgent session.
+    Allows mid-session language changes to be reflected in the AI's response.
+    """
+    agent = get_agent_session(request.session_id)
+    if not agent:
+        logger.info("No active agent session found for %s to update language", request.session_id)
+        return {"updated": False, "message": "No active session"}
+    
+    try:
+        agent.update_language(request.language)
+        logger.info("Updated language to %s for session %s", request.language, request.session_id)
+        return {"updated": True}
+    except Exception as e:
+        logger.error("Failed to update agent language: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/chat-profile-stream", summary="Streaming AI chat using Server-Sent Events")
@@ -435,6 +363,12 @@ async def chat_profile_stream(request: ChatRequest):
     
     agent = get_agent_session(request.session_id)
     
+    # Sync language if it changed mid-session
+    if request.language and hasattr(agent, "preferred_language") and agent.preferred_language != request.language:
+        logger.info("Language mismatch detected in streaming session %s. Updating from %s to %s", 
+                    request.session_id, agent.preferred_language, request.language)
+        agent.update_language(request.language)
+    
     # Generator function for SSE streaming
     async def generate_stream():
         try:
@@ -461,66 +395,9 @@ async def chat_profile_stream(request: ChatRequest):
             # Save chat history
             if request.user_id:
                 try:
-                    from services.dynamodb_service import update_chat_history as save_history
-                    if hasattr(agent.agent, "messages") and agent.agent.messages:
-                        raw_messages = agent.agent.messages
-                        serialized_chat = []
-                        
-                        for msg in raw_messages:
-                            role = None
-                            content_str = ""
-                            
-                            if isinstance(msg, dict):
-                                role = msg.get("role")
-                                content = msg.get("content")
-                            elif hasattr(msg, "role"):
-                                role = msg.role
-                                content = msg.content if hasattr(msg, "content") else None
-                            else:
-                                continue
-                            
-                            if not role:
-                                continue
-                            
-                            if content is None:
-                                content_str = ""
-                            elif isinstance(content, str):
-                                content_str = content
-                            elif isinstance(content, list):
-                                text_parts = []
-                                for block in content:
-                                    if isinstance(block, str):
-                                        text_parts.append(block)
-                                    elif isinstance(block, dict) and "text" in block:
-                                        text_parts.append(str(block["text"]))
-                                    elif hasattr(block, "text"):
-                                        text_parts.append(str(block.text))
-                                content_str = " ".join(text_parts).strip()
-                            else:
-                                content_str = str(content)
-                            
-                            # Strip PROFILE_DATA markers and the JSON inside
-                            if "PROFILE_DATA_START" in content_str and "PROFILE_DATA_END" in content_str:
-                                start_marker = "PROFILE_DATA_START"
-                                end_marker = "PROFILE_DATA_END"
-                                start_idx = content_str.find(start_marker)
-                                end_idx = content_str.find(end_marker) + len(end_marker)
-                                content_before = content_str[:start_idx].strip()
-                                content_after = content_str[end_idx:].strip()
-                                content_str = (content_before + "\n\n" + content_after).strip()
-                            
-                            if content_str:
-                                serialized_chat.append({
-                                    "role": role,
-                                    "content": content_str
-                                })
-                        
-                        if serialized_chat:
-                            save_history(request.user_id, serialized_chat)
-                            logger.info("Saved %d messages to DynamoDB", len(serialized_chat))
+                    save_agent_history(agent, request.user_id)
                 except Exception as e:
                     logger.warning("Failed to save chat history: %s", e)
-            
             # Save profile assessment if complete
             if request.user_id and result.get("profile_data"):
                 try:

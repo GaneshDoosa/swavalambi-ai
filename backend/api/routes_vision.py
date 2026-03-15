@@ -265,10 +265,25 @@ async def analyze_vision(
                     agent_session = get_agent_session(session_id)
                     # Mark the session so the chat route suppresses is_ready_for_photo
                     agent_session.has_uploaded_photo = True
+
+                    # Cache the full image message metadata on the agent session.
+                    # save_agent_history() will use this to restore s3Key/imagePreviewUrl
+                    # without needing an extra DynamoDB read on every subsequent chat turn.
+                    if not hasattr(agent_session, "image_messages"):
+                        agent_session.image_messages = {}
+                    image_msg_content = "I have successfully uploaded my work sample photo."
+                    agent_session.image_messages[image_msg_content] = {
+                        "role": "user",
+                        "content": "Uploaded work sample",
+                        "imagePreviewUrl": s3_url,
+                        "s3Key": file_key,
+                        "s3Bucket": bucket_name
+                    }
+
                     if hasattr(agent_session.agent, "messages"):
                         agent_session.agent.messages.append({
                             "role": "user", 
-                            "content": [{"text": "I have successfully uploaded my work sample photo."}]
+                            "content": [{"text": image_msg_content}]
                         })
                         agent_session.agent.messages.append({
                             "role": "assistant", 

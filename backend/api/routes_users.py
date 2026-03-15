@@ -11,6 +11,7 @@ import logging
 from schemas.models import UserRegisterRequest, UserRegisterResponse
 from services.dynamodb_service import create_or_update_user, get_user, clear_chat_history, delete_user, reset_assessment
 from services.cognito_service import admin_delete_user, COGNITO_ENABLED
+from common.agent_sessions import delete_sessions_for_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -181,6 +182,9 @@ async def clear_user_chat_history(user_id: str):
     """
     try:
         clear_chat_history(user_id)
+        # Also evict the in-memory agent so old messages aren't re-saved on next chat
+        evicted = delete_sessions_for_user(user_id)
+        logger.info("Cleared chat history and evicted %d agent session(s) for user %s", evicted, user_id)
         return {"message": "Chat history cleared successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to clear chat history: {e}")
@@ -195,6 +199,10 @@ async def reset_user_assessment(user_id: str):
     """
     try:
         reset_assessment(user_id)
+        # CRITICAL: Also evict the in-memory agent session so the old conversation
+        # (including any PROFILE_DATA blocks) isn't re-written to DynamoDB on next chat.
+        evicted = delete_sessions_for_user(user_id)
+        logger.info("Reset assessment and evicted %d agent session(s) for user %s", evicted, user_id)
         return {
             "message": "Assessment data reset successfully",
             "reset_fields": [

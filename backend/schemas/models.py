@@ -56,6 +56,11 @@ class ChatRequest(BaseModel):
     message: str
     user_id: Optional[str] = None
     user_name: Optional[str] = None
+    language: Optional[str] = None
+
+class LanguageUpdateRequest(BaseModel):
+    session_id: str
+    language: str
 
 class ChatResponse(BaseModel):
     model_config = ConfigDict(

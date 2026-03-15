@@ -8,6 +8,8 @@ from pydantic import BaseModel
 from services.voice_service import get_voice_service
 from agents.profiling_agent import ProfilingAgent
 from common.agent_sessions import get_agent_session, set_agent_session, has_agent_session
+from common.text_utils import strip_profile_markers
+from common.chat_persistence import save_agent_history
 import asyncio
 import logging
 import os
@@ -360,64 +362,23 @@ async def voice_chat(
                     logger.warning("Failed to initialize voice chat greeting: %s", e)
                     
         agent = get_agent_session(session_id)
-        # Send user's original language text directly to LLM — run blocking call in thread pool
+        
+        # Sync language if it changed mid-session
+        if hasattr(agent, "preferred_language") and agent.preferred_language != language:
+            logger.info("Language mismatch detected in session %s. Updating from %s to %s", 
+                        session_id, agent.preferred_language, language)
+            agent.update_language(language)
+            
+        # Send user's original language text directly to LLM
         result = await loop.run_in_executor(None, lambda: agent.run(user_text))
         # LLM responds in user's language (based on system prompt and input language)
         response_text = result["response"]
         logger.info("Agent response (%s): %s...", language, response_text[:100])
         
-        # Save chat history to DynamoDB if user_id is provided
+        # Save chat history to DynamoDB
         if user_id:
             try:
-                from services.dynamodb_service import update_chat_history
-                if hasattr(agent.agent, "messages") and agent.agent.messages:
-                    raw_messages = agent.agent.messages
-                    serialized_chat = []
-                    
-                    for msg in raw_messages:
-                        role = None
-                        content_str = ""
-                        
-                        if isinstance(msg, dict):
-                            role = msg.get("role")
-                            content = msg.get("content")
-                        elif hasattr(msg, "role"):
-                            role = msg.role
-                            content = msg.content if hasattr(msg, "content") else None
-                        else:
-                            continue
-                            
-                        if not role:
-                            continue
-                            
-                        if content is None:
-                            content_str = ""
-                        elif isinstance(content, str):
-                            content_str = content
-                        elif isinstance(content, list):
-                            text_parts = []
-                            for block in content:
-                                if isinstance(block, str):
-                                    text_parts.append(block)
-                                elif isinstance(block, dict) and "text" in block:
-                                    text_parts.append(str(block["text"]))
-                                elif hasattr(block, "text"):
-                                    text_parts.append(str(block.text))
-                                elif hasattr(block, "__dict__") and "text" in block.__dict__:
-                                    text_parts.append(str(block.__dict__["text"]))
-                            content_str = " ".join(text_parts).strip()
-                        else:
-                            content_str = str(content)
-                            
-                        if content_str:
-                            serialized_chat.append({
-                                "role": role,
-                                "content": content_str
-                            })
-                            
-                    if serialized_chat:
-                        update_chat_history(user_id, serialized_chat)
-                        logger.info("Saved %d messages to DynamoDB for voice chat %s", len(serialized_chat), user_id)
+                save_agent_history(agent, user_id)
             except Exception as e:
                 logger.warning("Failed to persist voice chat history to DynamoDB: %s", e)
         
@@ -435,7 +396,7 @@ async def voice_chat(
             None,
             lambda: voice_service.synthesize(
                 text=response_text,
-                language_code=language
+                language_code=agent.preferred_language
             )
         )
         
@@ -482,6 +443,7 @@ async def voice_chat_stream(
     try:
         # Step 1: Transcribe audio
         audio_bytes = await audio.read()
+
         audio_format = audio.filename.split(".")[-1].lower()
         if audio_format not in ["wav", "mp3", "webm", "ogg"]:
             audio_format = "wav"
@@ -493,8 +455,19 @@ async def voice_chat_stream(
             audio_format=audio_format
         )
         
-        user_text = transcription["text"]
+        user_text = transcription["text"].strip()
         logger.info("User said (%s): %s", language, user_text)
+
+        # Guard: empty transcription means silence or inaudible audio
+        if not user_text:
+            logger.warning("Empty transcription — returning early without calling LLM")
+            async def empty_stream():
+                yield f"data: {json.dumps({'type': 'transcription', 'text': ''})}\n\n"
+                yield f"data: {json.dumps({'type': 'audio', 'audio': '', 'text': 'I could not hear you clearly. Could you please speak again?'})}\n\n"
+                yield f"data: {json.dumps({'type': 'complete', 'is_ready_for_photo': False, 'is_complete': False})}\n\n"
+            return StreamingResponse(empty_stream(), media_type="text/event-stream",
+                                     headers={"Cache-Control": "no-cache", "Connection": "keep-alive"})
+
         
         async def generate_stream():
             # Send transcription
@@ -545,6 +518,12 @@ async def voice_chat_stream(
                         logger.warning("Failed to restore chat history: %s", e)
             
             agent = get_agent_session(session_id)
+            
+            # Sync language if it changed mid-session
+            if hasattr(agent, "preferred_language") and agent.preferred_language != language:
+                logger.info("Language mismatch detected in session %s. Updating from %s to %s", 
+                            session_id, agent.preferred_language, language)
+                agent.update_language(language)
             full_response = ""
             
             # Stream LLM text chunks to UI while collecting for TTS
@@ -568,7 +547,7 @@ async def voice_chat_stream(
                 # Use sentence-by-sentence TTS with caching
                 audio_chunks = voice_service.synthesize_sentences(
                     text=full_response,
-                    language_code=language
+                    language_code=agent.preferred_language
                 )
                 
                 # Send each audio chunk as it's ready
@@ -616,45 +595,7 @@ async def voice_chat_stream(
             # Save chat history (now with cleaned response)
             if user_id:
                 try:
-                    from services.dynamodb_service import update_chat_history
-                    if hasattr(agent.agent, "messages") and agent.agent.messages:
-                        serialized_chat = []
-                        for msg in agent.agent.messages:
-                            role = None
-                            content_str = ""
-                            
-                            if isinstance(msg, dict):
-                                role = msg.get("role")
-                                content = msg.get("content")
-                            elif hasattr(msg, "role"):
-                                role = msg.role
-                                content = msg.content if hasattr(msg, "content") else None
-                            else:
-                                continue
-                            
-                            if not role:
-                                continue
-                            
-                            if isinstance(content, str):
-                                content_str = content
-                            elif isinstance(content, list):
-                                text_parts = []
-                                for block in content:
-                                    if isinstance(block, str):
-                                        text_parts.append(block)
-                                    elif isinstance(block, dict) and "text" in block:
-                                        text_parts.append(str(block["text"]))
-                                    elif hasattr(block, "text"):
-                                        text_parts.append(str(block.text))
-                                content_str = " ".join(text_parts).strip()
-                            else:
-                                content_str = str(content)
-                            
-                            if content_str:
-                                serialized_chat.append({"role": role, "content": content_str})
-                        
-                        if serialized_chat:
-                            update_chat_history(user_id, serialized_chat)
+                    save_agent_history(agent, user_id)
                 except Exception as e:
                     logger.warning("Failed to save chat history: %s", e)
             

@@ -578,6 +578,20 @@ export default function Assistant() {
       }).catch(err => console.error("Failed to save language preference:", err));
     }
     
+    // SYNC ACTIVE AGENT SESSION: Also update language on the live agent if a session exists
+    // This handles Option B: mid-session language toggle without reset
+    const currentSessionId = getSessionId();
+    if (currentSessionId) {
+      fetch(`${API_BASE}/chat/chat-profile/language`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_id: currentSessionId,
+          language: languageCode
+        })
+      }).catch(err => console.error("Failed to update active agent language:", err));
+    }
+    
     // After language selection, show greeting in selected language
     const storedName = localStorage.getItem("swavalambi_name") || "";
     const userName = storedName && !/^\+?\d{7,}$/.test(storedName.trim()) ? storedName : "";
@@ -1640,8 +1654,8 @@ export default function Assistant() {
                     setIsLoadingAudio(assistantMsgId);
                   }
                 } else if (data.type === "complete") {
-                  // Update with final metadata
                   if (fullText) {
+                    // Normal case: update message with final content + metadata
                     setMessages((prev) =>
                       prev.map((msg) =>
                         msg.id === assistantMsgId
@@ -1653,7 +1667,18 @@ export default function Assistant() {
                           : msg
                       )
                     );
+                  } else {
+                    // Empty transcription / silent audio — remove both the
+                    // empty user placeholder and the "..." assistant bubble silently
+                    setMessages((prev) =>
+                      prev.filter(
+                        (msg) => msg.id !== assistantMsgId && msg.id !== userMsgId
+                      )
+                    );
                   }
+
+                  // Always clear loading state on complete
+                  setIsLoading(false);
 
                   // Cache profile data
                   cacheProfileData(data);

@@ -43,6 +43,7 @@ def normalize_skill(skill_input: str) -> str:
 class ProfilingAgent:
     def __init__(self, session_id: str, user_name: str = "", preferred_language: str = "en-IN", has_uploaded_photo: bool = False):
         self.session_id = session_id
+        self.user_name = user_name
         self.preferred_language = preferred_language
         self.has_uploaded_photo = has_uploaded_photo  # Store so routes can override is_ready_for_photo
         
@@ -132,6 +133,52 @@ class ProfilingAgent:
             system_prompt=self.system_prompt,
         )
 
+    def update_language(self, new_language_code: str):
+        """
+        Dynamically update the agent's language and rebuild the system prompt.
+        This allows mid-session language changes without losing conversation history.
+        """
+        self.preferred_language = new_language_code
+        
+        # Mapping for instruction
+        language_names: dict[str, str] = {
+            "hi-IN": "Hindi (हिंदी)",
+            "te-IN": "Telugu (తెలుగు)",
+            "ta-IN": "Tamil (தமிழ்)",
+            "mr-IN": "Marathi (मराठी)",
+            "kn-IN": "Kannada (ಕನ್ನಡ)",
+            "bn-IN": "Bengali (বাংলা)",
+            "gu-IN": "Gujarati (ગુજરાતી)",
+            "ml-IN": "Malayalam (മലയാളം)",
+            "pa-IN": "Punjabi (ਪੰਜਾਬੀ)",
+            "en-IN": "English"
+        }
+        user_language = language_names.get(new_language_code, "English")
+        
+        # Build user-context preamble (re-using current logic)
+        if self.user_name and not self.user_name.isdigit() and len(self.user_name.strip()) > 1:
+            known_user_context = (
+                f"\n\n        IMPORTANT USER CONTEXT: The user's name is already known — it is '{self.user_name}'. "
+                f"You MUST NOT ask for their name again. Address them as '{self.user_name}' naturally in conversation. "
+                f"Skip the name-collection step and go directly to asking about their profession/skill.\n"
+            )
+        else:
+            known_user_context = ""
+        
+        # Re-load system prompt
+        self.system_prompt = self._load_system_prompt(
+            user_language=user_language,
+            known_user_context=known_user_context,
+            preferred_language=new_language_code,
+            has_uploaded_photo=self.has_uploaded_photo
+        )
+        
+        # Update live agents
+        self.agent.system_prompt = self.system_prompt
+        self.fallback_agent.system_prompt = self.system_prompt
+        
+        logger.info(f"[ProfilingAgent] Session {self.session_id} updated language to {new_language_code}")
+
     def _load_system_prompt(self, user_language: str, known_user_context: str, preferred_language: str, has_uploaded_photo: bool) -> str:
         """
         Attempts to load the system prompt from AWS Bedrock Prompt Management.
@@ -204,6 +251,39 @@ class ProfilingAgent:
             model=self.fallback_model,
         )
 
+    def _sanitize_messages(self, agent) -> None:
+        """
+        Remove any empty text content blocks from agent.messages before
+        sending to Anthropic. Claude rejects requests where any content
+        block has an empty 'text' field.
+
+        This can happen when:
+        - Chat history is restored from DynamoDB with near-empty messages
+        - Profile data stripping leaves an otherwise-empty assistant message
+        - Strands internally inserts placeholder blocks during tool use
+        """
+        if not hasattr(agent, "messages") or not agent.messages:
+            return
+        sanitized = []
+        for msg in agent.messages:
+            if isinstance(msg, dict):
+                content = msg.get("content")
+                if isinstance(content, list):
+                    clean_blocks = [
+                        block for block in content
+                        if not (isinstance(block, dict)
+                                and block.get("type", "text") == "text"
+                                and not block.get("text", "").strip())
+                    ]
+                    if not clean_blocks:
+                        continue  # skip message entirely if all blocks were empty
+                    msg = dict(msg)
+                    msg["content"] = clean_blocks
+                elif isinstance(content, str) and not content.strip():
+                    continue  # skip message with empty string content
+            sanitized.append(msg)
+        agent.messages = sanitized
+
     def run(self, user_message: str) -> dict:
         """
         Runs the conversational agent with the user's latest message.
@@ -213,7 +293,8 @@ class ProfilingAgent:
         response_text = None
         used_fallback = False
         
-        # Try primary model (Claude) first
+        # Sanitize before calling — removes empty text blocks Anthropic rejects
+        self._sanitize_messages(self.agent)
         try:
             print(f"[INFO] Attempting with primary model (Claude)...")
             response = self.agent(user_message)
@@ -267,6 +348,9 @@ class ProfilingAgent:
             markers_detected = False
             buffer = ""  # Buffer to check for "PROFILE" before yielding
             
+            # Sanitize before streaming — removes empty text blocks Anthropic rejects
+            self._sanitize_messages(self.agent)
+
             # Use Strands' stream_async() method for async streaming
             async for event in self.agent.stream_async(user_message):
                 # Extract text from "data" field in events

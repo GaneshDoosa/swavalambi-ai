@@ -426,6 +426,17 @@ class VoiceService:
             }
             
         except Exception as e:
+            err_str = str(e)
+            # Sarvam 400 "Failed to read the file" means invalid/silent audio
+            # Return empty transcription rather than crashing into AWS fallback
+            if "Failed to read the file" in err_str or "invalid_request_error" in err_str:
+                print(f"[WARN] Sarvam STT: invalid or silent audio, returning empty transcription")
+                return {
+                    "text": "",
+                    "language": language_code,
+                    "confidence": 0.0,
+                    "provider": "sarvam"
+                }
             print(f"[ERROR] Sarvam SDK STT failed: {e}")
             raise
 
