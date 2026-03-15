@@ -123,13 +123,24 @@ app.include_router(profile_picture_router, prefix="/api", tags=["Profile Picture
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize S3 bucket and agent instances on startup."""
+    """Initialize S3 bucket, agent instances, and TTS cache on startup."""
     try:
         from services.s3_service import S3Service
         s3_service = S3Service()
         s3_service.ensure_bucket_exists()
     except Exception as e:
         logging.error(f"Failed to initialize S3 bucket: {e}")
+    
+    # Pre-initialize TTS cache (Redis connection) — fail fast at boot, not on first message
+    try:
+        from services.tts_cache_service import get_tts_cache_service
+        cache = get_tts_cache_service()
+        if cache.enabled:
+            logging.info("✅ TTS Redis cache connected")
+        else:
+            logging.warning("⚠️ TTS Redis cache disabled — running without cache")
+    except Exception as e:
+        logging.error(f"Failed to initialize TTS cache: {e}")
     
     # Pre-initialize agent instances and connection pool
     try:
