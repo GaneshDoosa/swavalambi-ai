@@ -26,6 +26,23 @@ logger.propagate = False
 
 router = APIRouter()
 
+
+def _strip_profile_markers(text: str) -> str:
+    """
+    Remove PROFILE_DATA_START...PROFILE_DATA_END blocks (and the JSON inside)
+    from a message string. Returns the cleaned text.
+    This prevents internal profile JSON from leaking into the chat UI or
+    being re-stored in DynamoDB when old contaminated records are restored.
+    """
+    start_marker = "PROFILE_DATA_START"
+    end_marker = "PROFILE_DATA_END"
+    while start_marker in text and end_marker in text:
+        s = text.find(start_marker)
+        e = text.find(end_marker) + len(end_marker)
+        text = (text[:s].strip() + "\n\n" + text[e:].strip()).strip()
+    return text
+
+
 @router.post("/chat-profile", response_model=ChatResponse, summary="AI Gateway chat using Strands")
 async def chat_profile(request: ChatRequest):
     """
@@ -75,10 +92,13 @@ async def chat_profile(request: ChatRequest):
                     for msg in chat_history:
                         # Skip messages with empty content
                         if msg.get("content") and msg["content"].strip():
-                            restored_messages.append({
-                                "role": msg["role"],
-                                "content": [{"text": msg["content"]}]
-                            })
+                            # Strip any PROFILE_DATA markers from old contaminated records
+                            clean_content = _strip_profile_markers(msg["content"])
+                            if clean_content:
+                                restored_messages.append({
+                                    "role": msg["role"],
+                                    "content": [{"text": clean_content}]
+                                })
                     # Set the agent's messages
                     get_agent_session(request.session_id).agent.messages = restored_messages
                     logger.info("Restored %d messages from DynamoDB for user %s", len(restored_messages), request.user_id)
@@ -357,10 +377,13 @@ async def chat_profile_stream(request: ChatRequest):
                     for msg in chat_history:
                         # Skip messages with empty content
                         if msg.get("content") and msg["content"].strip():
-                            restored_messages.append({
-                                "role": msg["role"],
-                                "content": [{"text": msg["content"]}]
-                            })
+                            # Strip any PROFILE_DATA markers from old contaminated records
+                            clean_content = _strip_profile_markers(msg["content"])
+                            if clean_content:
+                                restored_messages.append({
+                                    "role": msg["role"],
+                                    "content": [{"text": clean_content}]
+                                })
                     get_agent_session(request.session_id).agent.messages = restored_messages
                     logger.info("Restored %d messages for streaming session", len(restored_messages))
                     chat_restored = True
