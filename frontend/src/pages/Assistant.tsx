@@ -248,6 +248,7 @@ export default function Assistant() {
   const audioQueueRef = useRef<Array<{base64: string, format: string, index: number, sentence: string, cached: boolean}>>([]);
   const isPlayingAudioQueue = useRef(false);
   const audioQueueComplete = useRef(false);
+  const isMountedRef = useRef(true);
 
   // Redirect countdown modal state
   const [showRedirectModal, setShowRedirectModal] = useState(false);
@@ -678,7 +679,9 @@ export default function Assistant() {
 
   // Cleanup audio on component unmount
   useEffect(() => {
+    isMountedRef.current = true;
     return () => {
+      isMountedRef.current = false;
       if (currentAudio) {
         currentAudio.pause();
         currentAudio.currentTime = 0;
@@ -761,6 +764,7 @@ export default function Assistant() {
       if (!response.ok) throw new Error("TTS API failed");
 
       const data = await response.json();
+      if (!isMountedRef.current) return;
       const endTime = performance.now();
       console.log(`[TTS Latency] Synthesizing audio took ${(endTime - startTime).toFixed(2)} ms`);
       
@@ -2034,12 +2038,23 @@ export default function Assistant() {
                     })()}
 
                   {msg.isReadyForPhoto && (
-                    <div className="mt-3">
+                    <div className="mt-3 flex flex-col gap-2">
                       <button
                         onClick={() => fileInputRef.current?.click()}
                         className="flex items-center gap-2 px-4 py-2 bg-primary/10 text-primary border border-primary/20 rounded-lg text-sm font-semibold hover:bg-primary/20 transition-colors w-full justify-center"
                       >
                         <ImageIcon size={16} /> Upload Work Sample
+                      </button>
+                      <button
+                        onClick={() => {
+                          localStorage.setItem("swavalambi_skill_rating", "2");
+                          const userIntent = localStorage.getItem("swavalambi_intent");
+                          const path = userIntent === "upskill" ? "/upskill" : userIntent === "job" ? "/jobs" : "/home";
+                          navigate(path);
+                        }}
+                        className="text-xs text-slate-400 hover:text-slate-600 text-center py-1 transition-colors"
+                      >
+                        Skip photo — I'll do this later (photo assessment is highly recommended)
                       </button>
                     </div>
                   )}
